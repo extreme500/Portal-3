@@ -43,11 +43,11 @@ Link do vídeo: https://www.youtube.com/watch?v=wA82CD9YFG0
 >   será a base de comparação para avaliar se o seu trabalho final
 >   conseguiu ou não reproduzir a referência.
 
-- **Timestamp inicial**: <mark>`1:20`</mark>
-- **Timestamp final**: <mark>`1:26`</mark>
+- **Timestamp inicial**: 1:20
+- **Timestamp final**: 1:26
 
-- **Timestamp inicial**: <mark>`19:30`</mark>
-- **Timestamp final**: <mark>`19:45`</mark>
+- **Timestamp inicial**: 19:30
+- **Timestamp final**: 19:45
 
 ### Imagens
 
@@ -55,7 +55,11 @@ Link do vídeo: https://www.youtube.com/watch?v=wA82CD9YFG0
 > - Coloque aqui **três imagens** capturadas do vídeo acima, que você
 >   irá usar como ilustração para as explicações que vêm abaixo.
 
-<mark>`<preencher>`</mark>
+
+![Mecânica de carregar a caixa até o botão](./docs/assets/button.png)
+![Mecânica navegar entre os portais](./docs/assets/portal.png)
+![Mecânica de carregar a caixa até o botão](./docs/assets/animated_cam.png)
+
 
 ## Especificação textual
 
