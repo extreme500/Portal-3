@@ -6,16 +6,16 @@
 
 ## Integrantes da dupla
 
-- **Aluno 1 - Nome**: <mark>`<preencher>`</mark>
-- **Aluno 1 - Cartão UFRGS**: <mark>`<preencher>`</mark>
+- **Aluno 1 - Nome**: <mark>`Gabriel Pieruccini Knopp`</mark>
+- **Aluno 1 - Cartão UFRGS**: <mark>`00594975`</mark>
 
-- **Aluno 2 - Nome**: <mark>`<preencher>`</mark>
-- **Aluno 2 - Cartão UFRGS**: <mark>`<preencher>`</mark>
+- **Aluno 2 - Nome**: <mark>`Tobias Cadoná Marion`</mark>
+- **Aluno 2 - Cartão UFRGS**: <mark>`00590278`</mark>
 
 ## Detalhes do que será implementado
 
-- **Título do trabalho**: <mark>`<preencher>`</mark>
-- **Parágrafo curto descrevendo o que será implementado**: <mark>`<preencher>`</mark>
+- **Título do trabalho**: <mark>`Portal 3 - FANMADE`</mark>
+- **Parágrafo curto descrevendo o que será implementado**: <mark>`Será implementado no trabalho uma pequena demo/prova de conceito do jogo Portal (especificamente o 1), com poucas fases, em OpenGL.`</mark>
 
 ## Especificação visual
 
@@ -34,7 +34,7 @@
 >   do próprio repositório. Mas, garanta que qualquer um tenha
 >   permissão de acesso ao vídeo através deste link.
 
-<mark>`<preencher>`</mark>
+Link do vídeo: https://www.youtube.com/watch?v=wA82CD9YFG0
 
 ### Vídeo - Timestamp
 
@@ -43,8 +43,11 @@
 >   será a base de comparação para avaliar se o seu trabalho final
 >   conseguiu ou não reproduzir a referência.
 
-- **Timestamp inicial**: <mark>`<preencher>`</mark>
-- **Timestamp final**: <mark>`<preencher>`</mark>
+- **Timestamp inicial**: <mark>`1:20`</mark>
+- **Timestamp final**: <mark>`1:26`</mark>
+
+- **Timestamp inicial**: <mark>`19:30`</mark>
+- **Timestamp final**: <mark>`19:45`</mark>
 
 ### Imagens
 
