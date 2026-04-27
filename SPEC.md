@@ -88,10 +88,10 @@ As nossas fases poderão conter mais de uma instância do objeto "botão" e, por
 Para garantir que o personagem não atravesse o cenário ou algum objeto, serão necessários testes de colisão entre personagem-parede ("parede" inclui chão e teto), personagem-"câmera de segurança" e personagem-caixa. Para garantir que nenhum objeto interagível (que dê para mudar de posição) entre dentro de outro, precisaremos também de testes de colisão entre caixa-caixa, caixa-parede, caixa-"câmera de segurança" e caixa-botão (que também deve ser usado para garantir condição de "botão pressionado"). Por fim, para colocar um portal em uma superfície, precisamos de testes de colisão do "portal disparado"-parede.
 
 ### Modelos de Iluminação em todos os objetos
-A cena deverá conter uma ou mais fontes de iluminação (lâmpadas pelas salas) e, portanto, podemos iluminar os objetos de acordo.
+Usaremos o modelo de iluminação "Physically Based Shading", apenas alterando os parâmetros para cada objeto, criando assim efeitos diferentes (como glossy, transparência, entre outros). Além disso, a cena deverá conter uma ou mais fontes de iluminação (lâmpadas pelas salas) e, portanto, podemos iluminar os objetos de acordo.
 
 ### Mapeamento de texturas em todos os objetos
-Caixas, personagem, paredes (especialmente para diferenciar qual pode possuir um portal nela e qual não), chão, teto e outros objetos que serão usados devem possuir texturas, as quais estão públicas na internet.
+Caixas, personagem, paredes (especialmente para diferenciar qual pode possuir um portal nela e qual não), chão, teto e outros objetos que serão usados devem possuir texturas, as quais estão públicas na internet. Os autores serão referenciados no README.md.
 
 ### Movimentação com curva Bézier cúbica
 Vamos utilizar essa técnica de movimentação em objetos que servirão para enriquecer o cenário, como a própria câmera de segurança que fica no canto da sala (como se ela estivesse mexendo para os lados conforme o tempo passa) ou uma torreta que fique se mexendo fora do alcance do jogador.
