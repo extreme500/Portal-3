@@ -36,6 +36,38 @@ uniform sampler2D TextureImage2;
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
 
+vec3 baseColor		 = 1.3*vec3(.82, .67, .16);
+float metallic		 = 1.0;
+float subsurface	 = 0.0;
+float specular		 = 1.0;
+float roughness		 = 0.6;
+float specularTint	 = 0.0;
+float anisotropic	 = 0.0;
+float sheen			 = 0.0;
+float sheenTint		 = 0.0;
+float clearcoat		 = 0.0;
+float clearcoatGloss = 1.0;
+
+const float PI = 3.14159265358979323846;
+
+// Luzes direcionais configuradas diretamente no shader.
+const int LIGHT_COUNT = 5;
+const vec3 LIGHT_DIRECTIONS[LIGHT_COUNT] = vec3[](
+    vec3(+10.0, 5.5, +10.0),
+    vec3(+10.0, 5.5, -10.0),
+    vec3(-10.0, 5.5, +10.0),
+    vec3(-10.0, 5.5, -10.0),
+    vec3(0.0, -1.0, 0.0)
+);
+const vec3 LIGHT_COLORS[LIGHT_COUNT] = vec3[](
+    vec3(1.0, 1.0, 1.0),
+    vec3(0.5, 0.5, 0.5),
+    vec3(0.5, 0.5, 0.5),
+    vec3(0.5, 0.5, 0.5),
+    vec3(0.0, 0.2, 0.0)
+);
+
+
 // Constantes
 #define M_PI   3.14159265358979323846
 #define M_PI_2 1.57079632679489661923

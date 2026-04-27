@@ -1,3 +1,8 @@
+# Anotações relevantes descobertas no código:
+* Texturas são tratadas no shader_fragment
+* Modelos dos objetos ficam em data e são "definidos" no código na main
+
+
 # Computação Gráfica e Visualização I (INF01047) - INF/UFRGS
 
 Este repositório contém o código base para o trabalho final. O enunciado completo do trabalho final está no Moodle:
