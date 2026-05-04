@@ -81,6 +81,8 @@ Mover as caixas e andar serão transformações geométricas que serão controla
 ### Diferentes tipos de câmeras
 Como mencionado, a câmera do personagem será a primeira, sendo controlada pelo mouse, e a segunda câmera será uma look-at travada no personagem (como se fosse uma câmera de segurança assistindo o jogador em 3° pessoa, que costuma ficar no canto do teto). Os portais também utilizarão câmeras para renderizar a imagem através deles de forma correta.
 
+> Comentário Professor: a implementação do desenho do portal (que deve mostrar outra parte do ambiente) já pode contar como um segundo tipo de câmera. Então, se quiserem simplificar, podem fazer somente câmera primeira pessoa + desenho correto dos portais. Fazer o desenho correto dos portais pode ser um desafio.
+
 ### Instâncias de objetos
 As nossas fases poderão conter mais de uma instância do objeto "botão" e, portanto, mais de uma instância de "caixa" posicionadas pelo ambiente. Além disso, ao criar um novo portal em uma localização distinta, a instância do portal na localização antiga é removida e um novo portal é instanciado na nova localização.
 
