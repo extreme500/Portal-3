@@ -301,6 +301,7 @@ int main(int argc, char* argv[])
     // Carregamos duas imagens para serem utilizadas como textura
     LoadTextureImage("../../data/red_brick_diff_1k.jpg");      // TextureImage0
     LoadTextureImage("../../data/rocky_terrain_02_diff_1k.jpg"); // TextureImage1
+    LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png");      // TextureImage2
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
     ObjModel spheremodel("../../data/sphere.obj");
@@ -440,7 +441,7 @@ int main(int argc, char* argv[])
         model = Matrix_Translate(0.0f,-1.0f,0.0f)*Matrix_Scale(1/7000.00,1/7000.00,1/7000.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLAYER);
-        DrawVirtualObject("the_player");
+        DrawVirtualObject("player_model");
 
         // Desenhamos o plano do chão
         model = Matrix_Translate(0.0f,-1.1f,0.0f);

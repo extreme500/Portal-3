@@ -182,6 +182,12 @@ void main()
         //   constante M_PI
         //   variável position_model
 
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
+		Kd0 = texture(TextureImage2, vec2(U,V)).rgb;
+
         
     }
 
