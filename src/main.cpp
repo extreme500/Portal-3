@@ -300,7 +300,7 @@ int main(int argc, char* argv[])
 
     // Carregamos duas imagens para serem utilizadas como textura
     LoadTextureImage("../../data/red_brick_diff_1k.jpg");      // TextureImage0
-    LoadTextureImage("../../data/rocky_terrain_02_diff_1k.jpg"); // TextureImage1
+    LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png"); // TextureImage1
     LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png");      // TextureImage2
     LoadTextureImage("../../data/chell/textures/eyeball_l.png");      // TextureImage3
     LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png");      // TextureImage4
@@ -447,6 +447,10 @@ int main(int argc, char* argv[])
         #define CUBE_CIRCLE2 12
         #define CUBE_CIRCLE3 13
 
+        // Constantes
+        #define M_PI   3.14159265358979323846
+        #define M_PI_2 1.57079632679489661923
+
         // // Desenhamos o modelo da esfera
         // model = Matrix_Translate(-1.0f,0.0f,0.0f)
         //       * Matrix_Rotate_Z(0.6f)
@@ -493,8 +497,15 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, CUBE);
         DrawVirtualObject("Cube");
 
+        // Desenhamos o plano da parede
+        model = Matrix_Translate(-1/1.25f,-1/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, PLANE);
+        DrawVirtualObject("the_plane");
+
+        
         // Desenhamos o plano do chão
-        model = Matrix_Translate(0.0f,-1.1f,0.0f);
+        model = Matrix_Translate(0.0f,-1.1f,0.0f) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
         DrawVirtualObject("the_plane");

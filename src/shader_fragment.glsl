@@ -258,7 +258,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage8
 
         // cor base do cubo (apertureTexture)
         Kd0 = texture(TextureImage8, vec2(U,V)).rgb;
@@ -273,7 +273,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage9
 
         Kd0 = texture(TextureImage9, vec2(U,V)).rgb;
 
@@ -301,7 +301,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+		// Obtemos a refletância difusa a partir de uma cor azul
 
         Kd0 = vec3(54.0/255.0, 192.0/255.0, 241.0/255.0);
         
@@ -313,7 +313,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+		// Obtemos a refletância difusa a partir de uma cor escura
 
         Kd0 = vec3(16.0/255.0, 16.0/255.0, 16.0/255.0).rgb;
 
