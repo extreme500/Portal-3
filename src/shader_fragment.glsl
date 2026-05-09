@@ -18,7 +18,7 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
-// Identificador que define qual objeto está sendo desenhado no momento
+// Identificador que define qual objeto está sendo desenhado no momento // Constantes
 #define SPHERE 0
 #define BUNNY  1
 #define PLANE  2
@@ -27,6 +27,13 @@ uniform mat4 projection;
 #define PLAYER_TORSO 5
 #define PLAYER_LEGS 6
 #define PLAYER_HAIR 7
+#define CUBE_003 8
+#define CUBE_CIRCLE1 9
+#define CUBE_002 10
+#define CUBE 11
+#define CUBE_CIRCLE2 12
+#define CUBE_CIRCLE3 13
+
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
@@ -41,6 +48,12 @@ uniform sampler2D TextureImage3;
 uniform sampler2D TextureImage4;
 uniform sampler2D TextureImage5;
 uniform sampler2D TextureImage6;
+uniform sampler2D TextureImage7;
+uniform sampler2D TextureImage8;
+uniform sampler2D TextureImage9;
+uniform sampler2D TextureImage10;
+uniform sampler2D TextureImage11;
+uniform sampler2D TextureImage12;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -111,6 +124,9 @@ void main()
 
 	// Coeficiente de refletância difusa
 	vec3 Kd0;
+
+    // Fator de refletância especular (o quanto o objeto brilha)
+    float Ks_map = 0.0;
 
     if ( object_id == SPHERE )
     {
@@ -235,13 +251,98 @@ void main()
         Kd0 = texture(TextureImage6, vec2(U,V)).rgb;
         
     }
+    else if (object_id == CUBE_003)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+
+        // cor base do cubo (apertureTexture)
+        Kd0 = texture(TextureImage8, vec2(U,V)).rgb;
+
+        Ks_map = texture(TextureImage11, vec2(U,V)).r;
+        
+    }
+    else if (object_id == CUBE)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+
+        Kd0 = texture(TextureImage9, vec2(U,V)).rgb;
+
+        Ks_map = texture(TextureImage12, vec2(U,V)).r;
+        
+    }
+    else if (object_id == CUBE_CIRCLE3)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+
+        Kd0 = texture(TextureImage7, vec2(U,V)).rgb;
+
+        Ks_map = 0.5;
+        
+    }
+    else if (object_id == CUBE_CIRCLE1)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+
+        Kd0 = vec3(54.0/255.0, 192.0/255.0, 241.0/255.0);
+        
+    }
+    else if (object_id == CUBE_CIRCLE2)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+
+        Kd0 = vec3(16.0/255.0, 16.0/255.0, 16.0/255.0).rgb;
+
+        Ks_map = 0.5;
+        
+    }
 
     
 
     // Equação de Iluminação
+    // Termo Difuso (Lambert)
     float lambert = max(0,dot(n,l));
 
-    color.rgb = Kd0 * (lambert + 0.01);
+    vec3 diffuse_color = Kd0 * (lambert + 0.01);
+
+    // Termo Especular
+    // Calcula o vetor "half" (bissetriz entre a câmera e a fonte de luz)
+    vec4 h = normalize(v + l);
+    float n_dot_h = max(0.0, dot(n, h));
+
+    // Eleva na potência de "shininess" 
+    float specular_intensity = pow(n_dot_h, 32.0); 
+    
+    // Multiplicamos pela cor da luz (branco puro) e pelo Ks_map
+    vec3 specular_color = vec3(1.0, 1.0, 1.0) * specular_intensity * Ks_map;
+
+    // Cor final do fragmento
+    color.rgb = diffuse_color + specular_color;
+    
 
     // NOTE: Se você quiser fazer o rendering de objetos transparentes, é
     // necessário:

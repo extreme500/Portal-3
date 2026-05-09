@@ -306,6 +306,13 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png");      // TextureImage4
     LoadTextureImage("../../data/chell/textures/chell_legs_diffuse.png");      // TextureImage5
     LoadTextureImage("../../data/chell/textures/chell_hair.png");      // TextureImage6
+    LoadTextureImage("../../data/cube/textures/apertureTexture.jpg");      // TextureImage7
+    LoadTextureImage("../../data/cube/textures/dirt.jpg");      // TextureImage8
+    LoadTextureImage("../../data/cube/textures/dirtMain2.jpg");      // TextureImage9
+    LoadTextureImage("../../data/cube/textures/normal.jpg");      // TextureImage10
+    LoadTextureImage("../../data/cube/textures/specular.jpg");      // TextureImage11
+    LoadTextureImage("../../data/cube/textures/SpecularMap.png");      // TextureImage12
+
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
     ObjModel spheremodel("../../data/sphere.obj");
@@ -323,6 +330,10 @@ int main(int argc, char* argv[])
     ObjModel playermodel("../../data/chell/source/Chell.obj");
     ComputeNormals(&playermodel);
     BuildTrianglesAndAddToVirtualScene(&playermodel);
+     
+    ObjModel portalcube("../../data/cube/source/cube.obj");
+    ComputeNormals(&portalcube);
+    BuildTrianglesAndAddToVirtualScene(&portalcube);
 
 
     if ( argc > 1 )
@@ -420,6 +431,7 @@ int main(int argc, char* argv[])
         glUniformMatrix4fv(g_view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
         glUniformMatrix4fv(g_projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
 
+        // Constantes
         #define SPHERE 0
         #define BUNNY  1
         #define PLANE  2
@@ -428,6 +440,12 @@ int main(int argc, char* argv[])
         #define PLAYER_TORSO 5
         #define PLAYER_LEGS 6
         #define PLAYER_HAIR 7
+        #define CUBE_003 8
+        #define CUBE_CIRCLE1 9
+        #define CUBE_002 10
+        #define CUBE 11
+        #define CUBE_CIRCLE2 12
+        #define CUBE_CIRCLE3 13
 
         // // Desenhamos o modelo da esfera
         // model = Matrix_Translate(-1.0f,0.0f,0.0f)
@@ -459,6 +477,21 @@ int main(int argc, char* argv[])
         DrawVirtualObject("player_model_legs");
         glUniform1i(g_object_id_uniform, PLAYER_HAIR);
         DrawVirtualObject("player_model_hair");
+
+        // Desenhamos o modelo do cubo
+        model = Matrix_Translate(1.0f,-1.0f,0.0f)*Matrix_Scale(1/10.00,1/10.00,1/10.00);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, CUBE_003);
+        DrawVirtualObject("Cube.003");
+        DrawVirtualObject("Cube.002");
+        glUniform1i(g_object_id_uniform, CUBE_CIRCLE1);
+        DrawVirtualObject("Circle");
+        glUniform1i(g_object_id_uniform, CUBE_CIRCLE2);
+        DrawVirtualObject("Circle.002");
+        glUniform1i(g_object_id_uniform, CUBE_CIRCLE3);
+        DrawVirtualObject("Circle.003");
+        glUniform1i(g_object_id_uniform, CUBE);
+        DrawVirtualObject("Cube");
 
         // Desenhamos o plano do chão
         model = Matrix_Translate(0.0f,-1.1f,0.0f);
@@ -636,6 +669,12 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage4"), 4);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage5"), 5);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage6"), 6);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage7"), 7);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage8"), 8);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage9"), 9);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage10"), 10);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage11"), 11);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage12"), 12);
     glUseProgram(0);
 }
 
