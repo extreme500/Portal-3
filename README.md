@@ -27,7 +27,7 @@ Modelo do botão
 * https://sketchfab.com/3d-models/button-from-portal-2-original-f1c4fcfc668a4577a30f4d1c8ed3ca9a
 
 Modelo da porta de saída
-https://sketchfab.com/3d-models/door-from-portal-2-original-e0fa18a874dc4a5bbc391f9bf876d2f5 
+* https://sketchfab.com/3d-models/door-from-portal-2-original-e0fa18a874dc4a5bbc391f9bf876d2f5 
   
 Video de gameplay 
 * https://www.youtube.com/watch?v=KZDJNJeTYQI 
