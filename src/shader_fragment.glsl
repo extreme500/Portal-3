@@ -22,7 +22,11 @@ uniform mat4 projection;
 #define SPHERE 0
 #define BUNNY  1
 #define PLANE  2
-#define PLAYER 3
+#define PLAYER_HEAD 3
+#define PLAYER_EYE 4
+#define PLAYER_TORSO 5
+#define PLAYER_LEGS 6
+#define PLAYER_HAIR 7
 uniform int object_id;
 
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
@@ -33,6 +37,10 @@ uniform vec4 bbox_max;
 uniform sampler2D TextureImage0;
 uniform sampler2D TextureImage1;
 uniform sampler2D TextureImage2;
+uniform sampler2D TextureImage3;
+uniform sampler2D TextureImage4;
+uniform sampler2D TextureImage5;
+uniform sampler2D TextureImage6;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -167,29 +175,68 @@ void main()
 		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
 		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
     }
-    else if (object_id == PLAYER)
+    else if (object_id == PLAYER_HEAD)
     {
-        // PREENCHA AQUI as coordenadas de textura da esfera, computadas com
-        // projeção esférica EM COORDENADAS DO MODELO. Utilize como referência
-        // o slides 134-150 do documento Aula_20_Mapeamento_de_Texturas.pdf.
-        // A esfera que define a projeção deve estar centrada na posição
-        // "bbox_center" definida abaixo.
 
-        // Você deve utilizar:
-        //   função 'length( )' : comprimento Euclidiano de um vetor
-        //   função 'atan( , )' : arcotangente. Veja https://en.wikipedia.org/wiki/Atan2.
-        //   função 'asin( )'   : seno inverso.
-        //   constante M_PI
-        //   variável position_model
 
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
-		Kd0 = texture(TextureImage2, vec2(U,V)).rgb;
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage2
 
+        Kd0 = texture(TextureImage2, vec2(U,V)).rgb;
         
     }
+    else if (object_id == PLAYER_EYE)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage3
+
+        Kd0 = texture(TextureImage3, vec2(U,V)).rgb;
+        
+    }
+    else if (object_id == PLAYER_TORSO)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage4
+
+        Kd0 = texture(TextureImage4, vec2(U,V)).rgb;
+        
+    }
+    else if (object_id == PLAYER_LEGS)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage5
+
+        Kd0 = texture(TextureImage5, vec2(U,V)).rgb;
+        
+    }
+    else if (object_id == PLAYER_HAIR)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage6
+
+        Kd0 = texture(TextureImage6, vec2(U,V)).rgb;
+        
+    }
+
+    
 
     // Equação de Iluminação
     float lambert = max(0,dot(n,l));

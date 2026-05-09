@@ -302,6 +302,10 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/red_brick_diff_1k.jpg");      // TextureImage0
     LoadTextureImage("../../data/rocky_terrain_02_diff_1k.jpg"); // TextureImage1
     LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png");      // TextureImage2
+    LoadTextureImage("../../data/chell/textures/eyeball_l.png");      // TextureImage3
+    LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png");      // TextureImage4
+    LoadTextureImage("../../data/chell/textures/chell_legs_diffuse.png");      // TextureImage5
+    LoadTextureImage("../../data/chell/textures/chell_hair.png");      // TextureImage6
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
     ObjModel spheremodel("../../data/sphere.obj");
@@ -419,7 +423,11 @@ int main(int argc, char* argv[])
         #define SPHERE 0
         #define BUNNY  1
         #define PLANE  2
-        #define PLAYER 3
+        #define PLAYER_HEAD 3
+        #define PLAYER_EYE 4
+        #define PLAYER_TORSO 5
+        #define PLAYER_LEGS 6
+        #define PLAYER_HAIR 7
 
         // // Desenhamos o modelo da esfera
         // model = Matrix_Translate(-1.0f,0.0f,0.0f)
@@ -438,10 +446,19 @@ int main(int argc, char* argv[])
         // DrawVirtualObject("the_bunny");
 
         // Desenhamos o modelo do jogador
-        model = Matrix_Translate(0.0f,-1.0f,0.0f)*Matrix_Scale(1/7000.00,1/7000.00,1/7000.00);
+        model = Matrix_Translate(0.0f,-1.0f,0.0f)*Matrix_Scale(1/70.00,1/70.00,1/70.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLAYER);
-        DrawVirtualObject("player_model");
+        glUniform1i(g_object_id_uniform, PLAYER_HEAD);
+        DrawVirtualObject("player_model_head");
+        glUniform1i(g_object_id_uniform, PLAYER_EYE);
+        DrawVirtualObject("player_model_left_eye");
+        DrawVirtualObject("player_model_right_eye");
+        glUniform1i(g_object_id_uniform, PLAYER_TORSO);
+        DrawVirtualObject("player_model_torso");
+        glUniform1i(g_object_id_uniform, PLAYER_LEGS);
+        DrawVirtualObject("player_model_legs");
+        glUniform1i(g_object_id_uniform, PLAYER_HAIR);
+        DrawVirtualObject("player_model_hair");
 
         // Desenhamos o plano do chão
         model = Matrix_Translate(0.0f,-1.1f,0.0f);
@@ -615,6 +632,10 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage0"), 0);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage1"), 1);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage2"), 2);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage3"), 3);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage4"), 4);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage5"), 5);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage6"), 6);
     glUseProgram(0);
 }
 
@@ -828,6 +849,7 @@ void BuildTrianglesAndAddToVirtualScene(ObjModel* model)
                     texture_coefficients.push_back( u );
                     texture_coefficients.push_back( v );
                 }
+                
             }
         }
 
