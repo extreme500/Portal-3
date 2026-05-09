@@ -11,13 +11,26 @@ https://moodle.ufrgs.br/mod/assign/view.php?id=6018620
 
 # Agrupando coisas que iremos usar no trabalho:
 Modelo do personagem
-* https://sketchfab.com/3d-models/chell-3b239db8827e49d5aabdb9aba7e18952
+* https://sketchfab.com/3d-models/chell-3b239db8827e49d5aabdb9aba7e18952 
+  
 Modelo do cubo
-* https://sketchfab.com/3d-models/portal-cube-b67becc862054d9fab781b3e4030a1af
-Modelo da portal gun
-* https://sketchfab.com/3d-models/portal-gun-old-eaff0d242c3542fd8f7b63a5ec49d2da
-Video de gameplay
-* https://www.youtube.com/watch?v=KZDJNJeTYQI
+* https://sketchfab.com/3d-models/portal-cube-b67becc862054d9fab781b3e4030a1af 
+  
+Modelo da portal gun 
+* https://sketchfab.com/3d-models/portal-gun-old-eaff0d242c3542fd8f7b63a5ec49d2da (não disponível para download)
+* https://sketchfab.com/3d-models/portal-2-portal-gun-viewmodel-rig-4703b6ae8b54474cbb2f3b9cb404efa4
+* https://sketchfab.com/3d-models/portal-gun-viewmodel-official-rigged-portal-318626bf86d84d4ba110790af8120e36
+* https://sketchfab.com/3d-models/hd-portal-gun-0dca649f7ffc4e4f9cd1d9d239e7c42d
+* https://sketchfab.com/3d-models/hd-portalgun-remastered-073ba676dd364b6e96c2d0a9b9991362
+
+Modelo do botão
+* https://sketchfab.com/3d-models/button-from-portal-2-original-f1c4fcfc668a4577a30f4d1c8ed3ca9a
+
+Modelo da porta de saída
+https://sketchfab.com/3d-models/door-from-portal-2-original-e0fa18a874dc4a5bbc391f9bf876d2f5 
+  
+Video de gameplay 
+* https://www.youtube.com/watch?v=KZDJNJeTYQI 
 
 # Direcionando implementações:
 A sua aplicação deve possibilitar interação em tempo real.
