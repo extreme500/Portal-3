@@ -117,7 +117,7 @@ void PopMatrix(glm::mat4& M);
 void BuildTrianglesAndAddToVirtualScene(ObjModel*); // Constrói representação de um ObjModel como malha de triângulos para renderização
 void ComputeNormals(ObjModel* model); // Computa normais de um ObjModel, caso não existam.
 void LoadShadersFromFiles(); // Carrega os shaders de vértice e fragmento, criando um programa de GPU
-void LoadTextureImage(const char* filename); // Função que carrega imagens de textura
+void LoadTextureImage(const char* filename, bool deveRepetir); // Função que carrega imagens de textura
 void DrawVirtualObject(const char* object_name); // Desenha um objeto armazenado em g_VirtualScene
 GLuint LoadShader_Vertex(const char* filename);   // Carrega um vertex shader
 GLuint LoadShader_Fragment(const char* filename); // Carrega um fragment shader
@@ -225,6 +225,14 @@ GLint g_bbox_max_uniform;
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
 
+// Variável para a posição global do personagem (e, consequentemente, da câmera)
+glm::vec4 Pos_Player = glm::vec4(.0f,.0f,.0f,1.0f);
+float velocidade = 1; // Velocidade do personagem para andar
+
+// Variáveis para controle de tempo
+float ultimoFrame = 0.0f;
+float deltaTime = 0.0f;
+
 int main(int argc, char* argv[])
 {
     // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do
@@ -299,19 +307,19 @@ int main(int argc, char* argv[])
     LoadShadersFromFiles();
 
     // Carregamos duas imagens para serem utilizadas como textura
-    LoadTextureImage("../../data/red_brick_diff_1k.jpg");      // TextureImage0
-    LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png"); // TextureImage1
-    LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png");      // TextureImage2
-    LoadTextureImage("../../data/chell/textures/eyeball_l.png");      // TextureImage3
-    LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png");      // TextureImage4
-    LoadTextureImage("../../data/chell/textures/chell_legs_diffuse.png");      // TextureImage5
-    LoadTextureImage("../../data/chell/textures/chell_hair.png");      // TextureImage6
-    LoadTextureImage("../../data/cube/textures/apertureTexture.jpg");      // TextureImage7
-    LoadTextureImage("../../data/cube/textures/dirt.jpg");      // TextureImage8
-    LoadTextureImage("../../data/cube/textures/dirtMain2.jpg");      // TextureImage9
-    LoadTextureImage("../../data/cube/textures/normal.jpg");      // TextureImage10
-    LoadTextureImage("../../data/cube/textures/specular.jpg");      // TextureImage11
-    LoadTextureImage("../../data/cube/textures/SpecularMap.png");      // TextureImage12
+    LoadTextureImage("../../data/red_brick_diff_1k.jpg",true);      // TextureImage0
+    LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png",true); // TextureImage1
+    LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png",false);      // TextureImage2
+    LoadTextureImage("../../data/chell/textures/eyeball_l.png",false);      // TextureImage3
+    LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png",false);      // TextureImage4
+    LoadTextureImage("../../data/chell/textures/chell_legs_diffuse.png",false);      // TextureImage5
+    LoadTextureImage("../../data/chell/textures/chell_hair.png",false);      // TextureImage6
+    LoadTextureImage("../../data/cube/textures/apertureTexture.jpg",false);      // TextureImage7
+    LoadTextureImage("../../data/cube/textures/dirt.jpg",false);      // TextureImage8
+    LoadTextureImage("../../data/cube/textures/dirtMain2.jpg",false);      // TextureImage9
+    LoadTextureImage("../../data/cube/textures/normal.jpg",false);      // TextureImage10
+    LoadTextureImage("../../data/cube/textures/specular.jpg",false);      // TextureImage11
+    LoadTextureImage("../../data/cube/textures/SpecularMap.png",false);      // TextureImage12
 
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -357,6 +365,31 @@ int main(int argc, char* argv[])
     while (!glfwWindowShouldClose(window))
     {
         // Aqui executamos as operações de renderização
+
+        // Cálculos de tempo
+        float atualFrame = (float)glfwGetTime(); 
+        deltaTime = atualFrame - ultimoFrame;
+        ultimoFrame = atualFrame;
+
+        // Cálculo da posição do personagem
+        // Se o usuário apertar a tecla W, andamos para frente.
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        {
+            Pos_Player.z += 1.0f * deltaTime;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        {
+            Pos_Player.z += -1.0f * deltaTime;
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        {
+            Pos_Player.x += 1.0f * deltaTime;
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        {
+            Pos_Player.x += -1.0f * deltaTime;
+        }
+
 
         // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
         // definida como coeficientes RGBA: Red, Green, Blue, Alpha; isto é:
@@ -468,7 +501,7 @@ int main(int argc, char* argv[])
         // DrawVirtualObject("the_bunny");
 
         // Desenhamos o modelo do jogador
-        model = Matrix_Translate(0.0f,-1.0f,0.0f)*Matrix_Scale(1/70.00,1/70.00,1/70.00);
+        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z)*Matrix_Scale(1/70.00,1/70.00,1/70.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLAYER_HEAD);
         DrawVirtualObject("player_model_head");
@@ -497,8 +530,16 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, CUBE);
         DrawVirtualObject("Cube");
 
-        // Desenhamos o plano da parede
-        model = Matrix_Translate(-1/1.25f,-1/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        // Desenhamos o plano da parede (única)
+        //model = Matrix_Translate(-1/1.25f,-1/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        //glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        //glUniform1i(g_object_id_uniform, PLANE);
+        //DrawVirtualObject("the_plane");
+
+
+        // Desenhamos o plano da parede (repetida fatorRepeticao vezes)
+        float fatorRepeticao = 2.0f;
+        model = Matrix_Translate(.0f,(fatorRepeticao-1)/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao/1.25f,fatorRepeticao/1.25f,fatorRepeticao/1.25f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLANE);
         DrawVirtualObject("the_plane");
@@ -544,7 +585,7 @@ int main(int argc, char* argv[])
 }
 
 // Função que carrega uma imagem para ser utilizada como textura
-void LoadTextureImage(const char* filename)
+void LoadTextureImage(const char* filename, bool deveRepetir)
 {
     printf("Carregando imagem \"%s\"... ", filename);
 
@@ -570,8 +611,16 @@ void LoadTextureImage(const char* filename)
     glGenSamplers(1, &sampler_id);
 
     // Veja slides 95-96 do documento Aula_20_Mapeamento_de_Texturas.pdf
-    glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (deveRepetir)
+    {
+        glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    }
+    else
+    {
+        glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glSamplerParameteri(sampler_id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
 
     // Parâmetros de amostragem da textura.
     glSamplerParameteri(sampler_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -1301,7 +1350,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     // Se o usuário pressionar a tecla ESC, fechamos a janela.
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
         glfwSetWindowShouldClose(window, GL_TRUE);
-
+    
     // O código abaixo implementa a seguinte lógica:
     //   Se apertar tecla X       então g_AngleX += delta;
     //   Se apertar tecla shift+X então g_AngleX -= delta;
