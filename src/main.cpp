@@ -320,6 +320,13 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/cube/textures/normal.jpg",false);      // TextureImage10
     LoadTextureImage("../../data/cube/textures/specular.jpg",false);      // TextureImage11
     LoadTextureImage("../../data/cube/textures/SpecularMap.png",false);      // TextureImage12
+    LoadTextureImage("../../data/button/textures/portal_button_blue emission.png",false);      // TextureImage13
+    LoadTextureImage("../../data/button/textures/portal_button_blue.jpeg",false);      // TextureImage14
+    LoadTextureImage("../../data/door/textures/internal_ground_ao_texture.jpeg",false);      // TextureImage15
+    LoadTextureImage("../../data/door/textures/portal_door_02_E_upscayl_2x_ultramix-balan.png",false);      // TextureImage16
+    LoadTextureImage("../../data/door/textures/portal_door_02_upscayl_8x_ultramix-balance.png",false);      // TextureImage17
+    LoadTextureImage("../../data/floor/metallic_floor.jpg",false);      // TextureImage18
+    LoadTextureImage("../../data/ceiling/portal_ceiling.png",false);      // TextureImage19
 
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -342,6 +349,18 @@ int main(int argc, char* argv[])
     ObjModel portalcube("../../data/cube/source/cube.obj");
     ComputeNormals(&portalcube);
     BuildTrianglesAndAddToVirtualScene(&portalcube);
+
+    ObjModel portalbutton("../../data/button/source/Button.obj");
+    ComputeNormals(&portalbutton);
+    BuildTrianglesAndAddToVirtualScene(&portalbutton);
+
+    ObjModel portaldoor("../../data/door/source/Door.obj");
+    ComputeNormals(&portaldoor);
+    BuildTrianglesAndAddToVirtualScene(&portaldoor);
+    
+    ObjModel portalopendoor("../../data/door/source/OpenDoor.obj");
+    ComputeNormals(&portalopendoor);
+    BuildTrianglesAndAddToVirtualScene(&portalopendoor);
 
 
     if ( argc > 1 )
@@ -479,6 +498,12 @@ int main(int argc, char* argv[])
         #define CUBE 11
         #define CUBE_CIRCLE2 12
         #define CUBE_CIRCLE3 13
+        #define BUTTON 14
+        #define BUTTON_001 15
+        #define DOOR 16
+        #define WALL 17
+        #define FLOOR 18
+        #define CEILING 19
 
         // Constantes
         #define M_PI   3.14159265358979323846
@@ -530,6 +555,22 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, CUBE);
         DrawVirtualObject("Cube");
 
+        // Desenhamos o modelo do botão
+        model = Matrix_Translate(-1.0f,-1.0f,0.0f)*Matrix_Scale(1.25,1.25,1.25);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, BUTTON);
+        DrawVirtualObject("portal_button_reduced_2");
+        glUniform1i(g_object_id_uniform, BUTTON_001);
+        DrawVirtualObject("portal_button_reduced_2.001");
+
+        // Desenhamos o modelo da porta (fechada ou aberta // TODO um if)
+        model = Matrix_Translate(-1.0f,-1.0f,1.0f)*Matrix_Scale(1.25,1.25,1.25);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, DOOR);
+        // if open então model_2
+        DrawVirtualObject("portal_door_combined_model_1");
+
+
         // Desenhamos o plano da parede (única)
         //model = Matrix_Translate(-1/1.25f,-1/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
         //glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
@@ -541,14 +582,20 @@ int main(int argc, char* argv[])
         float fatorRepeticao = 2.0f;
         model = Matrix_Translate(.0f,(fatorRepeticao-1)/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao/1.25f,fatorRepeticao/1.25f,fatorRepeticao/1.25f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLANE);
+        glUniform1i(g_object_id_uniform, WALL);
         DrawVirtualObject("the_plane");
 
         
         // Desenhamos o plano do chão
         model = Matrix_Translate(0.0f,-1.1f,0.0f) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLANE);
+        glUniform1i(g_object_id_uniform, FLOOR);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano do teto
+        model = Matrix_Translate(0.0f,2.1f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, CEILING);
         DrawVirtualObject("the_plane");
 
         // Imprimimos na tela os ângulos de Euler que controlam a rotação do
@@ -735,6 +782,13 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage10"), 10);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage11"), 11);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage12"), 12);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage13"), 13);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage14"), 14);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage15"), 15);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage16"), 16);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage17"), 17);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage18"), 18);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage19"), 19);
     glUseProgram(0);
 }
 

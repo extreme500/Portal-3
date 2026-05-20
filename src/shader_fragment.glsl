@@ -33,6 +33,12 @@ uniform mat4 projection;
 #define CUBE 11
 #define CUBE_CIRCLE2 12
 #define CUBE_CIRCLE3 13
+#define BUTTON 14
+#define BUTTON_001 15
+#define DOOR 16
+#define WALL 17
+#define FLOOR 18
+#define CEILING 19
 
 uniform int object_id;
 
@@ -54,6 +60,13 @@ uniform sampler2D TextureImage9;
 uniform sampler2D TextureImage10;
 uniform sampler2D TextureImage11;
 uniform sampler2D TextureImage12;
+uniform sampler2D TextureImage13;
+uniform sampler2D TextureImage14;
+uniform sampler2D TextureImage15;
+uniform sampler2D TextureImage16;
+uniform sampler2D TextureImage17;
+uniform sampler2D TextureImage18;
+uniform sampler2D TextureImage19;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -182,7 +195,7 @@ void main()
 		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage0
 		Kd0 = texture(TextureImage0, vec2(U,V)).rgb;
     }
-    else if ( object_id == PLANE )
+    else if ( object_id == WALL)
     {
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
         // Multiplicamos por um fator (ex: 5.0). Quanto maior o número, mais ela se repete.
@@ -192,6 +205,29 @@ void main()
 
 		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
 		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+    }
+    else if ( object_id == FLOOR)
+    {
+        // Coordenadas de textura do plano, obtidas do arquivo OBJ.
+        // Multiplicamos por um fator (ex: 5.0). Quanto maior o número, mais ela se repete.
+        float fatorRepeticao = 1.0f; 
+        U = texcoords.x * fatorRepeticao;
+        V = texcoords.y * fatorRepeticao;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage18
+		Kd0 = texture(TextureImage18, vec2(U,V)).rgb;
+        
+    }
+    else if ( object_id == CEILING)
+    {
+        // Coordenadas de textura do plano, obtidas do arquivo OBJ.
+        // Multiplicamos por um fator (ex: 5.0). Quanto maior o número, mais ela se repete.
+        float fatorRepeticao = 1.0f; 
+        U = texcoords.x * fatorRepeticao;
+        V = texcoords.y * fatorRepeticao;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
+		Kd0 = texture(TextureImage19, vec2(U,V)).rgb;
     }
     else if (object_id == PLAYER_HEAD)
     {
@@ -260,7 +296,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage8
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage11
 
         // cor base do cubo (apertureTexture)
         Kd0 = texture(TextureImage8, vec2(U,V)).rgb;
@@ -275,7 +311,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage9
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage12
 
         Kd0 = texture(TextureImage9, vec2(U,V)).rgb;
 
@@ -320,6 +356,42 @@ void main()
         Kd0 = vec3(16.0/255.0, 16.0/255.0, 16.0/255.0).rgb;
 
         Ks_map = 0.5;
+        
+    }
+    else if (object_id == BUTTON)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage14
+
+        Kd0 = texture(TextureImage14, vec2(U,V)).rgb;
+
+    }
+    else if (object_id == BUTTON_001)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage14
+
+        Kd0 = texture(TextureImage14, vec2(U,V)).rgb;
+        
+    }
+    else if (object_id == DOOR)
+    {
+
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage17
+
+        Kd0 = texture(TextureImage17, vec2(U,V)).rgb;
         
     }
 
