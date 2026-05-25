@@ -39,6 +39,7 @@ uniform mat4 projection;
 #define WALL 17
 #define FLOOR 18
 #define CEILING 19
+#define GLASS 20
 
 uniform int object_id;
 
@@ -210,7 +211,7 @@ void main()
     {
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
         // Multiplicamos por um fator (ex: 5.0). Quanto maior o número, mais ela se repete.
-        float fatorRepeticao = 1.0f; 
+        float fatorRepeticao = 4.0f; 
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
@@ -222,7 +223,7 @@ void main()
     {
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
         // Multiplicamos por um fator (ex: 5.0). Quanto maior o número, mais ela se repete.
-        float fatorRepeticao = 1.0f; 
+        float fatorRepeticao = 4.0f; 
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
@@ -385,7 +386,6 @@ void main()
     else if (object_id == DOOR)
     {
 
-
         U = texcoords.x;
         V = texcoords.y;
 
@@ -394,7 +394,17 @@ void main()
         Kd0 = texture(TextureImage17, vec2(U,V)).rgb;
         
     }
+    else if (object_id == GLASS)
+    {
+        U = texcoords.x;
+        V = texcoords.y;
 
+		// Obtemos a refletância difusa a partir de uma cor branca
+
+        Kd0 = vec3(1.0f,1.0f,1.0f);
+
+        Ks_map = 0.5;
+    }
     
 
     // Equação de Iluminação
@@ -431,6 +441,11 @@ void main()
     //    transparentes que estão mais longe da câmera).
     // Alpha default = 1 = 100% opaco = 0% transparente
     color.a = 1;
+
+    if (object_id == GLASS)
+    {
+        color.a = 0.5;
+    }
 
     // Cor final com correção gamma, considerando monitor sRGB.
     // Veja https://en.wikipedia.org/w/index.php?title=Gamma_correction&oldid=751281772#Windows.2C_Mac.2C_sRGB_and_TV.2Fvideo_standard_gammas

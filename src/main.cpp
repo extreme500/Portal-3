@@ -325,8 +325,8 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/door/textures/internal_ground_ao_texture.jpeg",false);      // TextureImage15
     LoadTextureImage("../../data/door/textures/portal_door_02_E_upscayl_2x_ultramix-balan.png",false);      // TextureImage16
     LoadTextureImage("../../data/door/textures/portal_door_02_upscayl_8x_ultramix-balance.png",false);      // TextureImage17
-    LoadTextureImage("../../data/floor/metallic_floor.jpg",false);      // TextureImage18
-    LoadTextureImage("../../data/ceiling/portal_ceiling.png",false);      // TextureImage19
+    LoadTextureImage("../../data/floor/metallic_floor.jpg",true);      // TextureImage18
+    LoadTextureImage("../../data/ceiling/portal_ceiling.png",true);      // TextureImage19
 
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -504,6 +504,7 @@ int main(int argc, char* argv[])
         #define WALL 17
         #define FLOOR 18
         #define CEILING 19
+        #define GLASS 20
 
         // Constantes
         #define M_PI   3.14159265358979323846
@@ -585,18 +586,29 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, WALL);
         DrawVirtualObject("the_plane");
 
-        
+        fatorRepeticao = 4.0f;
         // Desenhamos o plano do chão
-        model = Matrix_Translate(0.0f,-1.1f,0.0f) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        model = Matrix_Translate(0.0f,-1.1f,0.0f) * Matrix_Scale(fatorRepeticao/1.25,fatorRepeticao/1.25,fatorRepeticao/1.25);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, FLOOR);
         DrawVirtualObject("the_plane");
 
         // Desenhamos o plano do teto
-        model = Matrix_Translate(0.0f,2.1f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        model = Matrix_Translate(0.0f,2.1f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao/1.25,fatorRepeticao/1.25,fatorRepeticao/1.25);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, CEILING);
         DrawVirtualObject("the_plane");
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+        // Desenhamos o plano das paredes de vidro
+        model = Matrix_Translate(+1.0f,-1/3.00f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, GLASS);
+        DrawVirtualObject("the_plane");
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
 
         // Imprimimos na tela os ângulos de Euler que controlam a rotação do
         // terceiro cubo.
