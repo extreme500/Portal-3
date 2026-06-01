@@ -362,6 +362,10 @@ int main(int argc, char* argv[])
     ComputeNormals(&portalopendoor);
     BuildTrianglesAndAddToVirtualScene(&portalopendoor);
 
+    ObjModel doorwall("../../data/door_wall/door_wall.obj");
+    ComputeNormals(&doorwall);
+    BuildTrianglesAndAddToVirtualScene(&doorwall);
+
 
     if ( argc > 1 )
     {
@@ -452,7 +456,7 @@ int main(int argc, char* argv[])
         // Note que, no sistema de coordenadas da câmera, os planos near e far
         // estão no sentido negativo! Veja slides 176-204 do documento Aula_09_Projecoes.pdf.
         float nearplane = -0.1f;  // Posição do "near plane"
-        float farplane  = -10.0f; // Posição do "far plane"
+        float farplane  = -20.0f; // Posição do "far plane"
 
         if (g_UsePerspectiveProjection)
         {
@@ -505,29 +509,21 @@ int main(int argc, char* argv[])
         #define FLOOR 18
         #define CEILING 19
         #define GLASS 20
+        #define WALL_2 21
+        #define WALL_4 22
 
         // Constantes
         #define M_PI   3.14159265358979323846
         #define M_PI_2 1.57079632679489661923
 
-        // // Desenhamos o modelo da esfera
-        // model = Matrix_Translate(-1.0f,0.0f,0.0f)
-        //       * Matrix_Rotate_Z(0.6f)
-        //       * Matrix_Rotate_X(0.2f)
-        //       * Matrix_Rotate_Y(g_AngleY + (float)glfwGetTime() * 0.1f);
-        // glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        // glUniform1i(g_object_id_uniform, SPHERE);
-        // DrawVirtualObject("the_sphere");
-
-        // Desenhamos o modelo do coelho
-        // model = Matrix_Translate(1.0f,0.0f,0.0f)
-        //       * Matrix_Rotate_X(g_AngleX + (float)glfwGetTime() * 0.1f);
-        // glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        // glUniform1i(g_object_id_uniform, BUNNY);
-        // DrawVirtualObject("the_bunny");
+        // Informações de base sobre a CENA
+        // O chão dela acontece em -1.0f
+        // O teto dela acontece em +3.0f
+        // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
+        // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
 
         // Desenhamos o modelo do jogador
-        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z)*Matrix_Scale(1/70.00,1/70.00,1/70.00);
+        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z)*Matrix_Scale(1/55.00,1/55.00,1/55.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLAYER_HEAD);
         DrawVirtualObject("player_model_head");
@@ -541,8 +537,107 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, PLAYER_HAIR);
         DrawVirtualObject("player_model_hair");
 
+        
+        // Cena Da 1R
+        
+        // Desenhamos o plano do chão (1R)
+        float fatorRepeticao = 4.0f;
+        model = Matrix_Translate(0.0f,-1.0f,0.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, FLOOR);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano do teto (1R)
+        model = Matrix_Translate(0.0f,3.0f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, CEILING);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 1R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(.0f, -1.0f + fatorRepeticao,-4.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 1R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(.0f, -1.0f + fatorRepeticao, +4.0f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 1R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(-4.0f, -1.0f + fatorRepeticao, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane");
+        
+        /* // Desenhamos o plano da parede (Esquerda 1R) (repetida fatorRepeticao vezes) // Essa parede acaba ficando dentro da porta
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane"); */
+
+        // Desenhamos o plano da parede (Esquerda 1R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 1R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, -3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 1R) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+4.0f, 2.0f,0.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("the_plane");
+
+
+        // Talvez ajeitar o modelo da parede no blender se não quiser ter 2 paredes dentro da outra
+        fatorRepeticao = 1.0f;
+        // Desenhamos o modelo da parede que vai na porta 1/2 (Aberta 1R)
+        model = Matrix_Translate(+4.0f, -1.4f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao+0.2,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("door_wall");
+        // Desenhamos o modelo da parede que vai na porta 2/2 (Aberta 1R)
+        model = Matrix_Translate(+4.0f, -1.0f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("door_wall");
+
+
+
+        // Desenhamos o modelo da porta (Aberta 1R)
+        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5,1.5,1.5);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, DOOR);
+        DrawVirtualObject("portal_door_combined_model_2");
+
+
+        // Cena Da 2R
+
+        // Desenhamos o modelo da porta (fechada ou aberta 2R // TODO um if)
+        model = Matrix_Translate(+7.0f,-1.0f,1.0f)*Matrix_Scale(1.25,1.25,1.25);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, DOOR);
+        // if open então model_2
+        DrawVirtualObject("portal_door_combined_model_1");
+
+        
+
         // Desenhamos o modelo do cubo
-        model = Matrix_Translate(1.0f,-1.0f,0.0f)*Matrix_Scale(1/10.00,1/10.00,1/10.00);
+        model = Matrix_Translate(+7.0f,-0.75f,0.0f)*Matrix_Scale(1/9.00,1/9.00,1/9.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, CUBE_003);
         DrawVirtualObject("Cube.003");
@@ -557,56 +652,72 @@ int main(int argc, char* argv[])
         DrawVirtualObject("Cube");
 
         // Desenhamos o modelo do botão
-        model = Matrix_Translate(-1.0f,-1.0f,0.0f)*Matrix_Scale(1.25,1.25,1.25);
+        model = Matrix_Translate(+7.0f,-1.0f,2.0f)*Matrix_Scale(1.65,1.65,1.65);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, BUTTON);
         DrawVirtualObject("portal_button_reduced_2");
         glUniform1i(g_object_id_uniform, BUTTON_001);
         DrawVirtualObject("portal_button_reduced_2.001");
 
-        // Desenhamos o modelo da porta (fechada ou aberta // TODO um if)
-        model = Matrix_Translate(-1.0f,-1.0f,1.0f)*Matrix_Scale(1.25,1.25,1.25);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR);
-        // if open então model_2
-        DrawVirtualObject("portal_door_combined_model_1");
+        
 
-
-        // Desenhamos o plano da parede (única)
-        //model = Matrix_Translate(-1/1.25f,-1/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
-        //glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        //glUniform1i(g_object_id_uniform, PLANE);
-        //DrawVirtualObject("the_plane");
-
-
-        // Desenhamos o plano da parede (repetida fatorRepeticao vezes)
-        float fatorRepeticao = 2.0f;
-        model = Matrix_Translate(.0f,(fatorRepeticao-1)/3.00f,-1/1.25f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao/1.25f,fatorRepeticao/1.25f,fatorRepeticao/1.25f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        fatorRepeticao = 4.0f;
-        // Desenhamos o plano do chão
-        model = Matrix_Translate(0.0f,-1.1f,0.0f) * Matrix_Scale(fatorRepeticao/1.25,fatorRepeticao/1.25,fatorRepeticao/1.25);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, FLOOR);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano do teto
-        model = Matrix_Translate(0.0f,2.1f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao/1.25,fatorRepeticao/1.25,fatorRepeticao/1.25);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CEILING);
-        DrawVirtualObject("the_plane");
+        // Voltamos para a Sala 1 (a parte transparente precisa ser renderizada por último)
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDisable(GL_CULL_FACE);
-        // Desenhamos o plano das paredes de vidro
-        model = Matrix_Translate(+1.0f,-1/3.00f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1/1.25,1/1.25,1/1.25);
+
+        // Desenhamos o plano da parede (Esquerda 1/2) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 2/2) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+1.0f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Frente 1/2)
+        model = Matrix_Translate(+.0f,.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, GLASS);
         DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Frente 2/2)
+        model = Matrix_Translate(+.0f,2.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Trás 1/2)
+        model = Matrix_Translate(+.0f,.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Trás 2/2)
+        model = Matrix_Translate(+.0f,2.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Direita 1/2)
+        model = Matrix_Translate(-1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Direita 2/2)
+        model = Matrix_Translate(-1.0f,2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, GLASS);
+        DrawVirtualObject("the_plane");
+
+
         glEnable(GL_CULL_FACE);
         glDisable(GL_BLEND);
 

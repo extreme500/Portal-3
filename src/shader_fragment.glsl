@@ -40,6 +40,8 @@ uniform mat4 projection;
 #define FLOOR 18
 #define CEILING 19
 #define GLASS 20
+#define WALL_2 21
+#define WALL_4 22
 
 uniform int object_id;
 
@@ -199,8 +201,30 @@ void main()
     else if ( object_id == WALL)
     {
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
-        // Multiplicamos por um fator (ex: 5.0). Quanto maior o número, mais ela se repete.
+        // Multiplicamos por um fator (ex: 1.0). Quanto maior o número, mais ela se repete.
+        float fatorRepeticao = 1.0f; 
+        U = texcoords.x * fatorRepeticao;
+        V = texcoords.y * fatorRepeticao;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
+		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+    }
+    else if ( object_id == WALL_2)
+    {
+        // Coordenadas de textura do plano, obtidas do arquivo OBJ.
+        // Multiplicamos por um fator (ex: 2.0). Quanto maior o número, mais ela se repete.
         float fatorRepeticao = 2.0f; 
+        U = texcoords.x * fatorRepeticao;
+        V = texcoords.y * fatorRepeticao;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
+		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+    }
+    else if ( object_id == WALL_4)
+    {
+        // Coordenadas de textura do plano, obtidas do arquivo OBJ.
+        // Multiplicamos por um fator (ex: 4.0). Quanto maior o número, mais ela se repete.
+        float fatorRepeticao = 4.0f; 
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
