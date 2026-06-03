@@ -48,6 +48,7 @@
 // Headers locais, definidos na pasta "include/"
 #include "utils.h"
 #include "matrices.h"
+#include "bezier.h"
 
 // Estrutura que representa um modelo geométrico carregado a partir de um
 // arquivo ".obj". Veja https://en.wikipedia.org/wiki/Wavefront_.obj_file .
@@ -124,6 +125,7 @@ GLuint LoadShader_Fragment(const char* filename); // Carrega um fragment shader
 void LoadShader(const char* filename, GLuint shader_id); // Função utilizada pelas duas acima
 GLuint CreateGpuProgram(GLuint vertex_shader_id, GLuint fragment_shader_id); // Cria um programa de GPU
 void PrintObjModelInfo(ObjModel*); // Função para debugging
+
 
 // Declaração de funções auxiliares para renderizar texto dentro da janela
 // OpenGL. Estas funções estão definidas no arquivo "textrendering.cpp".
@@ -227,11 +229,24 @@ GLuint g_NumLoadedTextures = 0;
 
 // Variável para a posição global do personagem (e, consequentemente, da câmera)
 glm::vec4 Pos_Player = glm::vec4(.0f,.0f,.0f,1.0f);
-float velocidade = 1; // Velocidade do personagem para andar
+float velocidade = 4; // Velocidade do personagem para andar
 
 // Variáveis para controle de tempo
 float ultimoFrame = 0.0f;
 float deltaTime = 0.0f;
+
+// Modo de câmera ativa
+enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
+CameraMode g_CameraMode = CAMERA_FPS;
+
+// Altura dos olhos do jogador na câmera FPS
+const float FPS_EYE_HEIGHT = 1.6f;
+
+// Duração de uma passagem completa da câmera de segurança (em segundos)
+const float SECURITY_CAM_SWEEP_PERIOD = 14.0f;
+
+// Última posição conhecida do cursor (usada para calcular deltas de movimento)
+double g_LastCursorPosX, g_LastCursorPosY;
 
 int main(int argc, char* argv[])
 {
@@ -376,6 +391,10 @@ int main(int argc, char* argv[])
     // Inicializamos o código para renderização de texto.
     TextRendering_Init();
 
+    // Câmera FPS começa com cursor capturado e invisível
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
+
     // Habilitamos o Z-buffer. Veja slides 104-116 do documento Aula_09_Projecoes.pdf.
     glEnable(GL_DEPTH_TEST);
 
@@ -394,23 +413,31 @@ int main(int argc, char* argv[])
         deltaTime = atualFrame - ultimoFrame;
         ultimoFrame = atualFrame;
 
-        // Cálculo da posição do personagem
-        // Se o usuário apertar a tecla W, andamos para frente.
+        // Movimento do jogador relativo à direção da câmera FPS
+        float fwd_x = -sin(g_CameraTheta);
+        float fwd_z = -cos(g_CameraTheta);
+        float right_x =  cos(g_CameraTheta);
+        float right_z = -sin(g_CameraTheta);
+
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         {
-            Pos_Player.z += 1.0f * deltaTime;
+            Pos_Player.x += fwd_x * velocidade * deltaTime;
+            Pos_Player.z += fwd_z * velocidade * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         {
-            Pos_Player.z += -1.0f * deltaTime;
+            Pos_Player.x -= fwd_x * velocidade * deltaTime;
+            Pos_Player.z -= fwd_z * velocidade * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         {
-            Pos_Player.x += 1.0f * deltaTime;
+            Pos_Player.x -= right_x * velocidade * deltaTime;
+            Pos_Player.z -= right_z * velocidade * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         {
-            Pos_Player.x += -1.0f * deltaTime;
+            Pos_Player.x += right_x * velocidade * deltaTime;
+            Pos_Player.z += right_z * velocidade * deltaTime;
         }
 
 
@@ -430,24 +457,91 @@ int main(int argc, char* argv[])
         // os shaders de vértice e fragmentos).
         glUseProgram(g_GpuProgramID);
 
-        // Computamos a posição da câmera utilizando coordenadas esféricas.  As
-        // variáveis g_CameraDistance, g_CameraPhi, e g_CameraTheta são
-        // controladas pelo mouse do usuário. Veja as funções CursorPosCallback()
-        // e ScrollCallback().
-        float r = g_CameraDistance;
-        float y = r*sin(g_CameraPhi);
-        float z = r*cos(g_CameraPhi)*cos(g_CameraTheta);
-        float x = r*cos(g_CameraPhi)*sin(g_CameraTheta);
+        // Câmera FPS: posição na cabeça do jogador, direção controlada pelo mouse
+        // Câmera de segurança: posição fixa no canto superior, lookat animado por Bézier cúbica
+        glm::vec4 camera_position_c;
+        glm::vec4 camera_view_vector;
+        glm::vec4 camera_up_vector = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
 
-        // Abaixo definimos as varáveis que efetivamente definem a câmera virtual.
-        // Veja slides 195-227 e 229-234 do documento Aula_08_Sistemas_de_Coordenadas.pdf.
-        glm::vec4 camera_position_c  = glm::vec4(x,y,z,1.0f); // Ponto "c", centro da câmera
-        glm::vec4 camera_lookat_l    = glm::vec4(0.0f,0.0f,0.0f,1.0f); // Ponto "l", para onde a câmera (look-at) estará sempre olhando
-        glm::vec4 camera_view_vector = camera_lookat_l - camera_position_c; // Vetor "view", sentido para onde a câmera está virada
-        glm::vec4 camera_up_vector   = glm::vec4(0.0f,1.0f,0.0f,0.0f); // Vetor "up" fixado para apontar para o "céu" (eito Y global)
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            // Posição base: cabeça do jogador
+            camera_position_c = Pos_Player + glm::vec4(0.0f, FPS_EYE_HEIGHT, 0.0f, 0.0f);
 
-        // Computamos a matriz "View" utilizando os parâmetros da câmera para
-        // definir o sistema de coordenadas da câmera.  Veja slides 2-14, 184-190 e 236-242 do documento Aula_08_Sistemas_de_Coordenadas.pdf.
+            // Bob de câmera ao caminhar: oscilação em Y e Z (eixo de profundidade da câmera)
+            bool isMoving = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS
+                         || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS
+                         || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS
+                         || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+            if (isMoving)
+            {
+                float t = (float)glfwGetTime();
+                // Y sobe e desce uma vez por passada
+                camera_position_c.y += 0.05f * sin(t * 10.0f);
+                // Z avança e recua duas vezes por passada (stride)
+                float bob_z = 0.025f * sin(t * 20.0f);
+                camera_position_c.x += bob_z * (-sin(g_CameraTheta));
+                camera_position_c.z += bob_z * (-cos(g_CameraTheta));
+            }
+
+            // Direção: vetor em coordenadas esféricas controlado pelo mouse
+            float vx = -cos(g_CameraPhi) * sin(g_CameraTheta);
+            float vy =  sin(g_CameraPhi);
+            float vz = -cos(g_CameraPhi) * cos(g_CameraTheta);
+            camera_view_vector = glm::vec4(vx, vy, vz, 0.0f);
+        }
+        else // CAMERA_SECURITY
+        {
+            // Posição fixa no canto superior da sala 1
+            camera_position_c = glm::vec4(-3.8f, 2.8f, -3.8f, 1.0f);
+
+            // Bézier cúbica POR PARTES em formato de Z — 3 segmentos que passam
+            // exatamente pelos 4 waypoints, cobrindo toda a sala:
+            //   Segmento 0: topo-esquerdo  → topo-direito   (traço superior do Z)
+            //   Segmento 1: topo-direito   → baixo-esquerdo  (diagonal do Z)
+            //   Segmento 2: baixo-esquerdo → baixo-direito   (traço inferior do Z)
+            //
+            // Velocidade: ping-pong linear + smoothstep POR SEGMENTO,
+            // para que a câmera desacelere naturalmente em cada waypoint antes de
+            // mudar de direção.
+            float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD)
+                         / SECURITY_CAM_SWEEP_PERIOD;
+            float ping = raw < 1.0f ? raw : 2.0f - raw;
+
+            const glm::vec4 wp[4] = {
+                glm::vec4(-3.5f,  0.8f, 3.5f, 1.0f), // topo-esquerdo
+                glm::vec4( 3.5f,  0.8f, 3.5f, 1.0f), // topo-direito
+                glm::vec4(-3.5f, -0.8f, 3.5f, 1.0f), // baixo-esquerdo
+                glm::vec4( 3.5f, -0.8f, 3.5f, 1.0f), // baixo-direito
+            };
+
+            int   seg     = (int)(ping * 3.0f);
+            if (seg > 2) seg = 2;
+            float local_t = ping * 3.0f - (float)seg;
+            if (local_t > 1.0f) local_t = 1.0f;
+
+            // Smoothstep por segmento: ease-in/ease-out em cada waypoint
+            float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+
+            // Bézier cúbica com pontos de controle colineares = linha reta garantida
+            glm::vec4 from = wp[seg];
+            glm::vec4 to   = wp[seg + 1];
+            glm::vec4 lookat_target = BezierCubic(
+                from,
+                from + (to - from) * (1.0f / 3.0f),
+                from + (to - from) * (2.0f / 3.0f),
+                to,
+                smooth_t
+            );
+            camera_view_vector = lookat_target - camera_position_c;
+        }
+
+        // Garantir que position_c é ponto (w=1) e view_vector é vetor (w=0),
+        // pois dotproduct() em matrices.h rejeita pontos com exit()
+        camera_position_c.w = 1.0f;
+        camera_view_vector.w = 0.0f;
+
+        // Computamos a matriz "View"
         glm::mat4 view = Matrix_Camera_View(camera_position_c, camera_view_vector, camera_up_vector);
 
         // Agora computamos a matriz de Projeção.
@@ -522,20 +616,23 @@ int main(int argc, char* argv[])
         // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
         // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
 
-        // Desenhamos o modelo do jogador
-        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z)*Matrix_Scale(1/55.00,1/55.00,1/55.00);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLAYER_HEAD);
-        DrawVirtualObject("player_model_head");
-        glUniform1i(g_object_id_uniform, PLAYER_EYE);
-        DrawVirtualObject("player_model_left_eye");
-        DrawVirtualObject("player_model_right_eye");
-        glUniform1i(g_object_id_uniform, PLAYER_TORSO);
-        DrawVirtualObject("player_model_torso");
-        glUniform1i(g_object_id_uniform, PLAYER_LEGS);
-        DrawVirtualObject("player_model_legs");
-        glUniform1i(g_object_id_uniform, PLAYER_HAIR);
-        DrawVirtualObject("player_model_hair");
+        // Em FPS o modelo da jogadora fica oculto (câmera está dentro do personagem)
+        if (g_CameraMode != CAMERA_FPS)
+        {
+            model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z)*Matrix_Scale(1/55.00,1/55.00,1/55.00);
+            glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+            glUniform1i(g_object_id_uniform, PLAYER_HEAD);
+            DrawVirtualObject("player_model_head");
+            glUniform1i(g_object_id_uniform, PLAYER_EYE);
+            DrawVirtualObject("player_model_left_eye");
+            DrawVirtualObject("player_model_right_eye");
+            glUniform1i(g_object_id_uniform, PLAYER_TORSO);
+            DrawVirtualObject("player_model_torso");
+            glUniform1i(g_object_id_uniform, PLAYER_LEGS);
+            DrawVirtualObject("player_model_legs");
+            glUniform1i(g_object_id_uniform, PLAYER_HAIR);
+            DrawVirtualObject("player_model_hair");
+        }
 
         
         // Cena Da 1R
@@ -1368,11 +1465,6 @@ void FramebufferSizeCallback(GLFWwindow* window, int width, int height)
     g_ScreenRatio = (float)width / height;
 }
 
-// Variáveis globais que armazenam a última posição do cursor do mouse, para
-// que possamos calcular quanto que o mouse se movimentou entre dois instantes
-// de tempo. Utilizadas no callback CursorPosCallback() abaixo.
-double g_LastCursorPosX, g_LastCursorPosY;
-
 // Função callback chamada sempre que o usuário aperta algum dos botões do mouse
 void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
@@ -1430,11 +1522,24 @@ void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 // cima da janela OpenGL.
 void CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
-    // Abaixo executamos o seguinte: caso o botão esquerdo do mouse esteja
-    // pressionado, computamos quanto que o mouse se movimento desde o último
-    // instante de tempo, e usamos esta movimentação para atualizar os
-    // parâmetros que definem a posição da câmera dentro da cena virtual.
-    // Assim, temos que o usuário consegue controlar a câmera.
+    // No modo FPS o cursor está capturado: qualquer movimento vira a câmera
+    if (g_CameraMode == CAMERA_FPS)
+    {
+        float dx = xpos - g_LastCursorPosX;
+        float dy = ypos - g_LastCursorPosY;
+
+        const float sensitivity = 0.002f;
+        g_CameraTheta -= sensitivity * dx;
+        g_CameraPhi   -= sensitivity * dy; // dy positivo = mouse para baixo = olhar para baixo
+
+        float phimax = 3.141592f / 2.0f * 0.99f;
+        if (g_CameraPhi >  phimax) g_CameraPhi =  phimax;
+        if (g_CameraPhi < -phimax) g_CameraPhi = -phimax;
+
+        g_LastCursorPosX = xpos;
+        g_LastCursorPosY = ypos;
+        return;
+    }
 
     if (g_LeftMouseButtonPressed)
     {
@@ -1588,6 +1693,22 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         LoadShadersFromFiles();
         fprintf(stdout,"Shaders recarregados!\n");
         fflush(stdout);
+    }
+
+    // Tecla C alterna entre câmera FPS e câmera de segurança
+    if (key == GLFW_KEY_C && action == GLFW_PRESS)
+    {
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            g_CameraMode = CAMERA_SECURITY;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+        else
+        {
+            g_CameraMode = CAMERA_FPS;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
+        }
     }
 }
 
