@@ -18,6 +18,11 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
+// Lanterna do jogador
+uniform vec4 flashlight_pos;
+uniform vec4 flashlight_dir;
+uniform int flashlight_on;
+
 // Identificador que define qual objeto está sendo desenhado no momento // Constantes
 #define SPHERE 0
 #define BUNNY  1
@@ -464,9 +469,34 @@ void main()
     // Multiplicamos pela cor da luz (branco puro) e pelo Ks_map
     vec3 specular_color = vec3(1.0, 1.0, 1.0) * specular_intensity * Ks_map;
 
-    // Cor final do fragmento
-    color.rgb = diffuse_color + specular_color;
-    
+
+    // Consideramos a lanterna do jogador, se ligada
+    vec3 flashlight_color = vec3(1.0, 1.0, 0.9); // Cor levemente amarelada
+    vec3 final_flashlight = vec3(0.0);
+
+    if (flashlight_on == 1) {
+        vec3 L_spot = normalize(flashlight_pos.xyz - p.xyz);
+        vec3 D_spot = normalize(flashlight_dir.xyz);
+        
+        // Cálculo do ângulo do cone (o dot product compara a luz com o centro do cone)
+        float cos_theta = dot(-L_spot, D_spot);
+        float cos_cutoff = cos(radians(25.0)); // 25 graus de abertura
+        
+        if (cos_theta > cos_cutoff) {
+            // Atenuação por distância (para não iluminar o mundo todo)
+            float dist = length(flashlight_pos.xyz - p.xyz);
+            float attenuation = 1.0 / (1.0 + 0.1 * dist + 0.01 * (dist * dist));
+            
+            // Intensidade baseada no ângulo (suaviza as bordas do cone)
+            float epsilon = 0.05;
+            float spot_intensity = smoothstep(cos_cutoff, cos_cutoff + epsilon, cos_theta);
+            
+            final_flashlight = Kd0 * flashlight_color * attenuation * spot_intensity;
+        }
+    }
+
+    //  Cor final do fragmento somada com a luz da lanterna no final
+    color.rgb = diffuse_color + specular_color + final_flashlight;
 
     // NOTE: Se você quiser fazer o rendering de objetos transparentes, é
     // necessário:

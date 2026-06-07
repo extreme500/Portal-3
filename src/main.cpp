@@ -224,6 +224,11 @@ GLint g_object_id_uniform;
 GLint g_bbox_min_uniform;
 GLint g_bbox_max_uniform;
 
+// Lanterna
+GLint g_flashlight_pos_uniform;
+GLint g_flashlight_dir_uniform;
+GLint g_flashlight_on_uniform;
+
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
 
@@ -234,6 +239,9 @@ float velocidade = 3; // Velocidade do personagem para andar
 // Variáveis para controle de tempo
 float ultimoFrame = 0.0f;
 float deltaTime = 0.0f;
+
+// Variável que controla a lanterna do jogador
+bool g_FlashlightEnabled = false;
 
 // Modo de câmera ativa
 enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
@@ -638,6 +646,13 @@ int main(int argc, char* argv[])
         // Constantes
         #define M_PI   3.14159265358979323846
         #define M_PI_2 1.57079632679489661923
+
+        // Defina uniformes no shader (supondo que você buscou os IDs com glGetUniformLocation)
+        // Dentro do loop, perto de onde você envia view e projection:
+        glUniform4fv(g_flashlight_pos_uniform, 1, glm::value_ptr(camera_position_c));
+        glUniform4fv(g_flashlight_dir_uniform, 1, glm::value_ptr(camera_view_vector));
+        glUniform1i(g_flashlight_on_uniform, (int)g_FlashlightEnabled);
+
 
         // Informações de base sobre a CENA
         // O chão dela acontece em -1.0f
@@ -1183,6 +1198,9 @@ void LoadShadersFromFiles()
     g_object_id_uniform  = glGetUniformLocation(g_GpuProgramID, "object_id"); // Variável "object_id" em shader_fragment.glsl
     g_bbox_min_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_min");
     g_bbox_max_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_max");
+    g_flashlight_pos_uniform = glGetUniformLocation(g_GpuProgramID, "flashlight_pos"); // Lanterna
+    g_flashlight_dir_uniform = glGetUniformLocation(g_GpuProgramID, "flashlight_dir");
+    g_flashlight_on_uniform  = glGetUniformLocation(g_GpuProgramID, "flashlight_on");
 
     // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura
     glUseProgram(g_GpuProgramID);
@@ -1918,6 +1936,12 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     if (key == GLFW_KEY_2 && action == GLFW_PRESS)
     {
         mov_sec_camera = 2;
+    }
+
+    // Alterna a lanterna
+    if (key == GLFW_KEY_F && action == GLFW_PRESS)
+    {
+        g_FlashlightEnabled = !g_FlashlightEnabled;
     }
     
 
