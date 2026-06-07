@@ -239,6 +239,9 @@ float deltaTime = 0.0f;
 enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
 CameraMode g_CameraMode = CAMERA_FPS;
 
+// Variável para movimentação do modelo da Câmera de Segurança
+int mov_sec_camera = 1;
+
 // Altura dos olhos do jogador na câmera FPS
 const float FPS_EYE_HEIGHT = 0.35f;
 
@@ -342,6 +345,8 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/door/textures/portal_door_02_upscayl_8x_ultramix-balance.png",false);      // TextureImage17
     LoadTextureImage("../../data/floor/metallic_floor.jpg",true);      // TextureImage18
     LoadTextureImage("../../data/ceiling/portal_ceiling.png",true);      // TextureImage19
+    LoadTextureImage("../../data/sec_camera/textures/security_camera.png",true);      // TextureImage20
+    LoadTextureImage("../../data/sec_camera/textures/internal_ground_ao_texture.jpeg",true);      // TextureImage21
 
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -380,6 +385,10 @@ int main(int argc, char* argv[])
     ObjModel doorwall("../../data/door_wall/door_wall.obj");
     ComputeNormals(&doorwall);
     BuildTrianglesAndAddToVirtualScene(&doorwall);
+
+    ObjModel securitycamera("../../data/sec_camera/source/Sec_camera.obj");
+    ComputeNormals(&securitycamera);
+    BuildTrianglesAndAddToVirtualScene(&securitycamera);
 
 
     if ( argc > 1 )
@@ -624,6 +633,7 @@ int main(int argc, char* argv[])
         #define GLASS 20
         #define WALL_2 21
         #define WALL_4 22
+        #define SEC_CAM 23
 
         // Constantes
         #define M_PI   3.14159265358979323846
@@ -694,13 +704,6 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, WALL_4);
         DrawVirtualObject("the_plane");
         
-        /* // Desenhamos o plano da parede (Esquerda 1R) (repetida fatorRepeticao vezes) // Essa parede acaba ficando dentro da porta
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane"); */
-
         // Desenhamos o plano da parede (Esquerda 1R 1/3) (repetida fatorRepeticao vezes)
         fatorRepeticao = 2.0f;
         model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
@@ -730,13 +733,129 @@ int main(int argc, char* argv[])
         DrawVirtualObject("door_wall");
 
         // Desenhamos o modelo da porta (Aberta 1R)
-        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5,1.5,1.5);
+        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5f,1.5f,1.5f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, DOOR);
         DrawVirtualObject("portal_door_combined_model_2");
 
+        // Desenhamos a câmera que segue o jogador/curva de Bézier (1R)
+        // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
+        glFrontFace(GL_CW);
+        model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * Matrix_Scale(-1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, SEC_CAM);
+        DrawVirtualObject("security_camera_2");
+        glFrontFace(GL_CCW);
+        // Depois, desenhamos a "câmera", que se movimenta
+        glm::vec3 sec_cam_pos = glm::vec3(-3.8f, 2.8f, -3.8f);
+        glm::vec3 sec_cam_front;
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            if (mov_sec_camera == 1) 
+            {
+                // MODO 1: Lente mira no jogador
+                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
+                
+                // Se o jogador chegar muito perto da parede da câmera (que está em -3.8),
+                // nós "travamos" o alvo da câmera em uma distância segura para não atravessar a parede.
+                // Calculamos a distância do jogador para a câmera, ignorando o Y
+                float dist_x = std::abs(target_player.x - sec_cam_pos.x);
+                float dist_z = std::abs(target_player.z - sec_cam_pos.z);
+                float dist = std::max(dist_x, dist_z);
+
+                // Mapeamos a distância para um fator de 0.0 (perto) a 1.0 (longe)
+                // Se estiver a 1.0 de distância ou menos, fator = 0.0. Se estiver a 1.5 ou mais, fator = 1.0.
+                float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+
+                // Interpolação linear (Lerp): o limite varia suavemente entre -1.38 e -2.8
+                float limite_parede = glm::mix(-1.3f, -2.8f, t);
+
+                // Aplicação do limite calculado
+                if (target_player.x < limite_parede) target_player.x = limite_parede;
+                if (target_player.z < limite_parede) target_player.z = limite_parede;
+
+                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+            }
+            else if (mov_sec_camera == 2)
+            {
+                // MODO 2: Lente faz o Bézier
+                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
+                float ping = raw < 1.0f ? raw : 2.0f - raw;
+
+                const glm::vec4 wp[4] = {
+                    glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
+                    glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
+                    glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
+                    glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
+                };
+
+                int seg = (int)(ping * 3.0f);
+                if (seg > 2) seg = 2;
+                float local_t = ping * 3.0f - (float)seg;
+                if (local_t > 1.0f) local_t = 1.0f;
+
+                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+
+                glm::vec4 from = wp[seg];
+                glm::vec4 to   = wp[seg + 1];
+                glm::vec4 lookat_target = BezierCubic(
+                    from,
+                    from + (to - from) * (1.0f / 3.0f),
+                    from + (to - from) * (2.0f / 3.0f),
+                    to,
+                    smooth_t
+                );
+                
+                // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
+                glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
+                sec_cam_front = glm::normalize(bezier_dir);
+            }
+        }
+        else // CAMERA_SECURITY
+        {
+            // Se estamos enxergando PELA câmera de segurança, o modelo físico 
+            // e a câmera global olham exatamente para a mesma direção.
+            sec_cam_front = glm::normalize(glm::vec3(camera_view_vector));
+        }
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+        glm::mat4 rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, SEC_CAM);
+        DrawVirtualObject("security_camera_2.001");
+
 
         // Cena Da 2R
+
+        // Desenhamos o plano do chão (2R)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(+8.0f,-1.0f,+6.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, FLOOR);
+        DrawVirtualObject("the_plane");
+
+
+        // Desenhamos o plano da parede (Esquerda 1R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 1R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, -3.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 1R) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+4.2f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("the_plane");
+
 
         // Desenhamos o modelo da porta (fechada ou aberta 2R // TODO um if)
         model = Matrix_Translate(+7.0f,-1.0f,1.0f)*Matrix_Scale(1.25,1.25,1.25);
@@ -1023,6 +1142,8 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage17"), 17);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage18"), 18);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage19"), 19);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage20"), 20);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage21"), 21);
     glUseProgram(0);
 }
 
@@ -1724,6 +1845,18 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
             glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
         }
     }
+
+    // Tecla 1-2 alterna entre movimento da câmera de segurança FollowPlayer-Bézier
+    if (key == GLFW_KEY_1 && action == GLFW_PRESS)
+    {
+        mov_sec_camera = 1;
+    }
+    if (key == GLFW_KEY_2 && action == GLFW_PRESS)
+    {
+        mov_sec_camera = 2;
+    }
+    
+
 }
 
 // Definimos o callback para impressão de erros da GLFW no terminal

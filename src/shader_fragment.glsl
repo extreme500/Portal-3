@@ -42,6 +42,7 @@ uniform mat4 projection;
 #define GLASS 20
 #define WALL_2 21
 #define WALL_4 22
+#define SEC_CAM 23
 
 uniform int object_id;
 
@@ -70,6 +71,8 @@ uniform sampler2D TextureImage16;
 uniform sampler2D TextureImage17;
 uniform sampler2D TextureImage18;
 uniform sampler2D TextureImage19;
+uniform sampler2D TextureImage20;
+uniform sampler2D TextureImage21;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -321,7 +324,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage11
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage8 e o especular da TextureImage11
 
         // cor base do cubo (apertureTexture)
         Kd0 = texture(TextureImage8, vec2(U,V)).rgb;
@@ -336,7 +339,7 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage12
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage9 e o especular da TextureImage12
 
         Kd0 = texture(TextureImage9, vec2(U,V)).rgb;
 
@@ -428,6 +431,19 @@ void main()
         Kd0 = vec3(1.0f,1.0f,1.0f);
 
         Ks_map = 0.5;
+    }
+    else if (object_id == SEC_CAM)
+    {
+
+        U = texcoords.x;
+        V = texcoords.y;
+
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage20 e o especular da TextureImage21
+
+        Kd0 = texture(TextureImage20, vec2(U,V)).rgb;
+
+        Ks_map = texture(TextureImage21, vec2(U,V)).r;
+        
     }
     
 
