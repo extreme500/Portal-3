@@ -20,4 +20,5 @@
     U = texcoords.x * fatorRepeticao;
     V = texcoords.y * fatorRepeticao;"
 
--
+- Ajuda com arrumar a câmera_fps com a cena e com o modelo do personagem, e os pontos da curva de Bézier: https://gemini.google.com/share/7f1417723bc7  
+- Ajuda com a parede que vai junto com a porta e com a renderização de outros modelos (como a câmera de segurança): https://gemini.google.com/share/d7570db1fdf3 

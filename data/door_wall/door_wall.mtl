@@ -1,12 +1,2 @@
 # Blender 5.1.1 MTL File: 'door_wall.blend'
 # www.blender.org
-
-newmtl Material.002
-Ns 250.000000
-Ka 1.000000 1.000000 1.000000
-Ks 0.500000 0.500000 0.500000
-Ke 0.000000 0.000000 0.000000
-Ni 1.500000
-d 1.000000
-illum 2
-map_Kd C:/Users/Gabriel/Desktop/Escola_Trabalho/Faculdade/UFRGS/4°_semestre/CG/Trabalho_Final/Portal-3/data/wall/Portal-concrete_modular_wall002.png

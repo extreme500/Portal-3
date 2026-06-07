@@ -229,7 +229,7 @@ GLuint g_NumLoadedTextures = 0;
 
 // Variável para a posição global do personagem (e, consequentemente, da câmera)
 glm::vec4 Pos_Player = glm::vec4(.0f,.0f,.0f,1.0f);
-float velocidade = 4; // Velocidade do personagem para andar
+float velocidade = 3; // Velocidade do personagem para andar
 
 // Variáveis para controle de tempo
 float ultimoFrame = 0.0f;
@@ -240,7 +240,7 @@ enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
 CameraMode g_CameraMode = CAMERA_FPS;
 
 // Altura dos olhos do jogador na câmera FPS
-const float FPS_EYE_HEIGHT = 1.6f;
+const float FPS_EYE_HEIGHT = 0.35f;
 
 // Duração de uma passagem completa da câmera de segurança (em segundos)
 const float SECURITY_CAM_SWEEP_PERIOD = 14.0f;
@@ -465,9 +465,21 @@ int main(int argc, char* argv[])
 
         if (g_CameraMode == CAMERA_FPS)
         {
-            // Posição base: cabeça do jogador
-            camera_position_c = Pos_Player + glm::vec4(0.0f, FPS_EYE_HEIGHT, 0.0f, 0.0f);
+            // Distância que a câmera deve ficar à frente do centro do modelo
+            float camera_offset_forward = 0.1f;
 
+            // Vetor de direção "frente" no plano horizontal (ignorando inclinação da cabeça)
+            float dir_x = -sin(g_CameraTheta);
+            float dir_z = -cos(g_CameraTheta);
+
+            // Cabeça do jogador + deslocamento (offset) na direção que ele está olhando
+            camera_position_c = Pos_Player + glm::vec4(
+                camera_offset_forward * dir_x, 
+                FPS_EYE_HEIGHT, 
+                camera_offset_forward * dir_z, 
+                0.0f
+            );
+            
             // Bob de câmera ao caminhar: oscilação em Y e Z (eixo de profundidade da câmera)
             bool isMoving = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS
                          || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS
@@ -509,10 +521,17 @@ int main(int argc, char* argv[])
             float ping = raw < 1.0f ? raw : 2.0f - raw;
 
             const glm::vec4 wp[4] = {
-                glm::vec4(-3.5f,  0.8f, 3.5f, 1.0f), // topo-esquerdo
-                glm::vec4( 3.5f,  0.8f, 3.5f, 1.0f), // topo-direito
-                glm::vec4(-3.5f, -0.8f, 3.5f, 1.0f), // baixo-esquerdo
-                glm::vec4( 3.5f, -0.8f, 3.5f, 1.0f), // baixo-direito
+                // Topo-Direito (Olhando a parede paralela ao eixo X)
+                glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
+                
+                // Topo-Esquerdo (Olhando a parede paralela ao eixo Z)
+                glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
+                
+                // Baixo-Direito (Diagonal de volta para a parede do eixo X)
+                glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
+                
+                // Baixo-Esquerdo (Finaliza olhando a parede do eixo Z novamente)
+                glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
             };
 
             int   seg     = (int)(ping * 3.0f);
@@ -616,23 +635,27 @@ int main(int argc, char* argv[])
         // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
         // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
 
-        // Em FPS o modelo da jogadora fica oculto (câmera está dentro do personagem)
-        if (g_CameraMode != CAMERA_FPS)
-        {
-            model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z)*Matrix_Scale(1/55.00,1/55.00,1/55.00);
-            glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-            glUniform1i(g_object_id_uniform, PLAYER_HEAD);
-            DrawVirtualObject("player_model_head");
-            glUniform1i(g_object_id_uniform, PLAYER_EYE);
-            DrawVirtualObject("player_model_left_eye");
-            DrawVirtualObject("player_model_right_eye");
-            glUniform1i(g_object_id_uniform, PLAYER_TORSO);
-            DrawVirtualObject("player_model_torso");
-            glUniform1i(g_object_id_uniform, PLAYER_LEGS);
-            DrawVirtualObject("player_model_legs");
-            glUniform1i(g_object_id_uniform, PLAYER_HAIR);
-            DrawVirtualObject("player_model_hair");
-        }
+
+        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, PLAYER_HEAD);
+        DrawVirtualObject("player_model_head");
+        glUniform1i(g_object_id_uniform, PLAYER_EYE);
+        DrawVirtualObject("player_model_left_eye");
+        DrawVirtualObject("player_model_right_eye");
+        glUniform1i(g_object_id_uniform, PLAYER_TORSO);
+        DrawVirtualObject("player_model_torso");
+        glUniform1i(g_object_id_uniform, PLAYER_LEGS);
+        DrawVirtualObject("player_model_legs");
+        glUniform1i(g_object_id_uniform, PLAYER_HAIR);
+        DrawVirtualObject("player_model_hair");
+
+
+        // Desenhamos o modelo do cubo
+        model = Matrix_Translate(+0.0f,0.5f,0.0f) * model;
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, CUBE_003);
+        DrawVirtualObject("Sphere");
 
         
         // Cena Da 1R
@@ -699,21 +722,12 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, WALL);
         DrawVirtualObject("the_plane");
 
-
-        // Talvez ajeitar o modelo da parede no blender se não quiser ter 2 paredes dentro da outra
         fatorRepeticao = 1.0f;
-        // Desenhamos o modelo da parede que vai na porta 1/2 (Aberta 1R)
-        model = Matrix_Translate(+4.0f, -1.4f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao+0.2,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("door_wall");
-        // Desenhamos o modelo da parede que vai na porta 2/2 (Aberta 1R)
+        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
         model = Matrix_Translate(+4.0f, -1.0f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, WALL);
         DrawVirtualObject("door_wall");
-
-
 
         // Desenhamos o modelo da porta (Aberta 1R)
         model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5,1.5,1.5);

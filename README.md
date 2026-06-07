@@ -28,6 +28,9 @@ Modelo do botão
 
 Modelo da porta de saída
 * https://sketchfab.com/3d-models/door-from-portal-2-original-e0fa18a874dc4a5bbc391f9bf876d2f5 
+
+Modelo da câmera de segurança
+* https://sketchfab.com/3d-models/portal-security-camera-c144c9c55c28489b83b37eebfa558abc 
   
 Video de gameplay 
 * https://www.youtube.com/watch?v=KZDJNJeTYQI 
