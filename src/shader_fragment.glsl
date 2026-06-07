@@ -48,6 +48,7 @@ uniform int flashlight_on;
 #define WALL_2 21
 #define WALL_4 22
 #define SEC_CAM 23
+#define DOOR_WALL 24
 
 uniform int object_id;
 
@@ -97,22 +98,22 @@ float clearcoatGloss = 1.0;
 const float PI = 3.14159265358979323846;
 
 // Luzes direcionais configuradas diretamente no shader.
-const int LIGHT_COUNT = 5;
-const vec3 LIGHT_DIRECTIONS[LIGHT_COUNT] = vec3[](
-    vec3(+10.0, 5.5, +10.0),
-    vec3(+10.0, 5.5, -10.0),
-    vec3(-10.0, 5.5, +10.0),
-    vec3(-10.0, 5.5, -10.0),
-    vec3(0.0, -1.0, 0.0)
-);
-const vec3 LIGHT_COLORS[LIGHT_COUNT] = vec3[](
-    vec3(1.0, 1.0, 1.0),
-    vec3(0.5, 0.5, 0.5),
-    vec3(0.5, 0.5, 0.5),
-    vec3(0.5, 0.5, 0.5),
-    vec3(0.0, 0.2, 0.0)
+// --- LUZES DA SALA 1 (Point Lights) ---
+const int LIGHT_COUNT = 4; // 4 cantos da sala 1R
+const vec3 LIGHT_POSITIONS[LIGHT_COUNT] = vec3[](
+    vec3( 3.8, 2.9,  3.8), // Canto Superior Direito (Frente)
+    vec3(-3.8, 2.9,  3.8), // Canto Superior Esquerdo (Frente)
+    vec3( 3.8, 2.9, -3.8), // Canto Superior Direito (Trás)
+    vec3(-3.8, 2.9, -3.8)  // Canto Superior Esquerdo (Trás)
 );
 
+// Cor das luzes (um branco levemente azulado, estilo laboratório)
+const vec3 LIGHT_COLORS[LIGHT_COUNT] = vec3[](
+    vec3(0.4, 0.6, 0.8),
+    vec3(0.4, 0.6, 0.8),
+    vec3(0.4, 0.6, 0.8),
+    vec3(0.4, 0.6, 0.8)
+);
 
 // Constantes
 #define M_PI   3.14159265358979323846
@@ -450,28 +451,55 @@ void main()
         Ks_map = texture(TextureImage21, vec2(U,V)).r;
         
     }
-    
+    else if ( object_id == DOOR_WALL)
+    {
+        float fatorRepeticao = 1.0; 
+        U = texcoords.x * fatorRepeticao;
+        V = texcoords.y * fatorRepeticao;
+        Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
 
-    // Equação de Iluminação
-    // Termo Difuso (Lambert)
-    float lambert = max(0,dot(n,l));
+        // O TRUQUE DE FLAT SHADING: Ignora a normal do arquivo e calcula 
+        // a perpendicular verdadeira da face na hora de desenhar!
+        vec3 true_normal = normalize(cross(dFdx(position_world.xyz), dFdy(position_world.xyz)));
+        
+        // Substitui a normal 'n' que seria usada na iluminação
+        n = vec4(true_normal, 0.0);
+    }
 
-    vec3 diffuse_color = Kd0 * (lambert + 0.01);
 
-    // Termo Especular
-    // Calcula o vetor "half" (bissetriz entre a câmera e a fonte de luz)
-    vec4 h = normalize(v + l);
-    float n_dot_h = max(0.0, dot(n, h));
+  // --- CÁLCULO DAS LUZES DO TETO ---
+    vec3 total_diffuse = vec3(0.0);
+    vec3 total_specular = vec3(0.0);
 
-    // Eleva na potência de "shininess" 
-    float specular_intensity = pow(n_dot_h, 32.0); 
-    
-    // Multiplicamos pela cor da luz (branco puro) e pelo Ks_map
-    vec3 specular_color = vec3(1.0, 1.0, 1.0) * specular_intensity * Ks_map;
+    for(int i = 0; i < LIGHT_COUNT; i++) {
+        // Vetor que aponta do fragmento para a luz atual
+        vec3 light_dir = LIGHT_POSITIONS[i] - p.xyz;
+        float dist = length(light_dir); // Distância até a luz
+        vec3 l = normalize(light_dir);
 
+        // Atenuação: a luz perde força conforme chega no chão ou no meio da sala
+        float attenuation = 1.0 / (1.0 + 0.05 * dist + 0.02 * (dist * dist));
+
+        // Termo Difuso (Lambert)
+        float lambert = max(0.0, dot(n.xyz, l));
+        vec3 diffuse = Kd0 * LIGHT_COLORS[i] * lambert;
+
+        // Termo Especular (Blinn-Phong)
+        vec3 h = normalize(v.xyz + l);
+        float n_dot_h = max(0.0, dot(n.xyz, h));
+        float specular_intensity = pow(n_dot_h, 32.0); 
+        vec3 specular = vec3(1.0) * LIGHT_COLORS[i] * specular_intensity * Ks_map;
+
+        // Somamos a contribuição dessa luz com a atenuação aplicada
+        total_diffuse += diffuse * attenuation;
+        total_specular += specular * attenuation;
+    }
+
+    // Luz ambiente bem fraca (para as sombras não ficarem 100% pretas)
+    vec3 ambient_light = Kd0 * 0.05;
 
     // Consideramos a lanterna do jogador, se ligada
-    vec3 flashlight_color = vec3(1.0, 1.0, 0.9); // Cor levemente amarelada
+    vec3 flashlight_color = vec3(0.85, 0.95, 1.0); // Cor levemente amarelada
     vec3 final_flashlight = vec3(0.0);
 
     if (flashlight_on == 1) {
@@ -496,7 +524,7 @@ void main()
     }
 
     //  Cor final do fragmento somada com a luz da lanterna no final
-    color.rgb = diffuse_color + specular_color + final_flashlight;
+    color.rgb = ambient_light + total_diffuse + total_specular + final_flashlight;
 
     // NOTE: Se você quiser fazer o rendering de objetos transparentes, é
     // necessário:

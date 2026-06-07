@@ -642,6 +642,7 @@ int main(int argc, char* argv[])
         #define WALL_2 21
         #define WALL_4 22
         #define SEC_CAM 23
+        #define DOOR_WALL 24
 
         // Constantes
         #define M_PI   3.14159265358979323846
@@ -657,8 +658,10 @@ int main(int argc, char* argv[])
         // Informações de base sobre a CENA
         // O chão dela acontece em -1.0f
         // O teto dela acontece em +3.0f
+        // As paredes da primeira sala vão de -4.0 até +4.0 em x e em z
         // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
         // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
+        
 
 
         model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
@@ -674,13 +677,6 @@ int main(int argc, char* argv[])
         DrawVirtualObject("player_model_legs");
         glUniform1i(g_object_id_uniform, PLAYER_HAIR);
         DrawVirtualObject("player_model_hair");
-
-
-        // Desenhamos o modelo do cubo
-        model = Matrix_Translate(+0.0f,0.5f,0.0f) * model;
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CUBE_003);
-        DrawVirtualObject("Sphere");
 
         
         // Cena Da 1R
@@ -742,9 +738,9 @@ int main(int argc, char* argv[])
 
         // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
         fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+4.0f, -1.0f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        model = Matrix_Translate(+4.0f, -1.0f, .0f) * Matrix_Rotate_Y(3 * M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
+        glUniform1i(g_object_id_uniform, DOOR_WALL); 
         DrawVirtualObject("door_wall");
 
         // Desenhamos o modelo da porta (Aberta 1R)
@@ -900,7 +896,7 @@ int main(int argc, char* argv[])
         fatorRepeticao = 1.0f;
         model = Matrix_Translate(+4.2f, -1.0f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
+        glUniform1i(g_object_id_uniform, DOOR_WALL); 
         DrawVirtualObject("door_wall");
         
         // Desenhamos o plano da parede (Diagonal 2R) (repetida fatorRepeticao vezes) 
