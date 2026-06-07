@@ -729,7 +729,7 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, WALL_2);
         DrawVirtualObject("the_plane");
 
-        // Desenhamos o plano da parede (Esquerda 1R) (repetida fatorRepeticao vezes) 
+        // Desenhamos o plano da parede (Esquerda 1R 3/3) (repetida fatorRepeticao vezes) 
         fatorRepeticao = 1.0f;
         model = Matrix_Translate(+4.0f, 2.0f,0.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
@@ -906,7 +906,7 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, WALL_2);
         DrawVirtualObject("the_plane");
 
-        // Desenhamos o plano da parede (Trás 1R) (repetida fatorRepeticao vezes)
+        // Desenhamos o plano da parede (Trás 2R) (repetida fatorRepeticao vezes)
         fatorRepeticao = 4.0f;
         model = Matrix_Translate(8.0f, -1.0f + fatorRepeticao,-4.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
@@ -927,22 +927,44 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, WALL_4);
         DrawVirtualObject("the_plane");
 
+        // Desenhamos o plano da parede (Frente 2R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+11.0f, -1.0f + fatorRepeticao, +6.0f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 2R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+5.0f, -1.0f + fatorRepeticao, 6.0f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 2R 3/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, 2.0f,+6.0f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, -1.0f,+6.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, DOOR_WALL); 
+        DrawVirtualObject("door_wall");
 
 
-
-
-
-        // Desenhamos o modelo da porta (fechada ou aberta 2R // TODO um if)
-        model = Matrix_Translate(+7.0f,-1.0f,1.0f)*Matrix_Scale(1.25,1.25,1.25);
+        // Desenhamos o modelo da porta (Fechada ou Aberta 2R-3R)
+        model = Matrix_Translate(8.0f, -1.0f,+6.1f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.5f,1.5f,1.5f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, DOOR);
         // if open então model_2
         DrawVirtualObject("portal_door_combined_model_1");
 
-        
-
         // Desenhamos o modelo do cubo
-        model = Matrix_Translate(+7.0f,-0.75f,0.0f)*Matrix_Scale(1/9.00,1/9.00,1/9.00);
+        model = Matrix_Translate(+11.0f,-0.75f,5.0f)*Matrix_Scale(1/8.00,1/8.00,1/8.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, CUBE_003);
         DrawVirtualObject("Cube.003");
@@ -957,7 +979,7 @@ int main(int argc, char* argv[])
         DrawVirtualObject("Cube");
 
         // Desenhamos o modelo do botão
-        model = Matrix_Translate(+7.0f,-1.0f,2.0f)*Matrix_Scale(1.65,1.65,1.65);
+        model = Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(1.65,1.65,1.65);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, BUTTON);
         DrawVirtualObject("portal_button_reduced_2");
