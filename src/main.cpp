@@ -126,6 +126,16 @@ void LoadShader(const char* filename, GLuint shader_id); // Função utilizada p
 GLuint CreateGpuProgram(GLuint vertex_shader_id, GLuint fragment_shader_id); // Cria um programa de GPU
 void PrintObjModelInfo(ObjModel*); // Função para debugging
 
+// Declaração de funções utilizadas para detecção e resposta a colisões
+struct CollisionAABB; // forward declaration (struct definida acima de main())
+bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box);
+bool PlayerCollidesAt(const glm::vec3& pos);
+bool IsPlayerOnGround();
+void TryMovePlayer(float dx, float dz);
+void TryMovePlayerVertical(float dy);
+CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model);
+void SetupCollisionAABBs();
+
 
 // Declaração de funções auxiliares para renderizar texto dentro da janela
 // OpenGL. Estas funções estão definidas no arquivo "textrendering.cpp".
@@ -233,8 +243,43 @@ GLint g_flashlight_on_uniform;
 GLuint g_NumLoadedTextures = 0;
 
 // Variável para a posição global do personagem (e, consequentemente, da câmera)
-glm::vec4 Pos_Player = glm::vec4(.0f,.0f,.0f,1.0f);
+glm::vec4 Pos_Player = glm::vec4(.0f,.0f,-2.0f,1.0f);
 float velocidade = 3; // Velocidade do personagem para andar
+
+// Representação física do jogador para fins de colisão: um cilindro vertical
+// cujos pés ficam em "Pos_Player.y + PLAYER_FEET_Y_OFFSET" (ver abaixo) e cujo
+// topo fica altura unidades acima disso.
+struct PlayerCollider {
+    float raio   = 0.25f;
+    float altura = 0.6f;
+};
+PlayerCollider g_PlayerCollider;
+
+// O modelo do jogador é desenhado com um deslocamento vertical de -1.0f em
+// relação a Pos_Player (ver DrawVirtualObject de player_model_*: a matriz de
+// modelagem usa "Pos_Player.y - 1.0f"), de forma que Pos_Player.y == 0.0f
+// corresponde aos pés apoiados no chão das salas (y = -1.0f). O cilindro de
+// colisão usa essa mesma referência para os seus pés.
+const float PLAYER_FEET_Y_OFFSET = -1.0f;
+
+// Margem de tolerância ("skin") usada para encolher o intervalo vertical
+// testado em PlayerCollidesAt — evita que o jogador fique "grudado" ao tocar
+// exatamente o chão/teto, o que travaria também o movimento horizontal.
+const float COLLISION_SKIN = 0.02f;
+
+// Física vertical: gravidade e pulo
+const float GRAVIDADE  = -9.8f; // aceleração da gravidade, em unidades/s²
+const float FORCA_PULO =  4.5f; // velocidade vertical inicial ao pular, em unidades/s
+float g_PlayerVelocityY = 0.0f; // velocidade vertical atual do jogador
+bool  g_SpaceWasPressed = false; // estado da tecla espaço no frame anterior (detecção de borda de subida, evita pulo contínuo ao segurar a tecla)
+
+// Caixa delimitadora axis-aligned em coordenadas de mundo, usada nos testes
+// de colisão do cenário (paredes, chão, teto, cubo, botão, porta)
+struct CollisionAABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+std::vector<CollisionAABB> g_CollisionAABBs;
 
 // Variáveis para controle de tempo
 float ultimoFrame = 0.0f;
@@ -405,6 +450,10 @@ int main(int argc, char* argv[])
         BuildTrianglesAndAddToVirtualScene(&model);
     }
 
+    // Construímos as AABBs de colisão do cenário (paredes, chão, teto, cubo,
+    // botão), uma única vez, já que a geometria estática não muda em runtime.
+    SetupCollisionAABBs();
+
     // Inicializamos o código para renderização de texto.
     TextRendering_Init();
 
@@ -420,13 +469,18 @@ int main(int argc, char* argv[])
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
+    // Inicializamos ultimoFrame aqui para evitar um deltaTime gigante no primeiro
+    // frame (o carregamento dos assets leva vários segundos, e ultimoFrame = 0
+    // causaria gravidade acumulada suficiente para teleportar o jogador para -∞)
+    ultimoFrame = (float)glfwGetTime();
+
     // Ficamos em um loop infinito, renderizando, até que o usuário feche a janela
     while (!glfwWindowShouldClose(window))
     {
         // Aqui executamos as operações de renderização
 
         // Cálculos de tempo
-        float atualFrame = (float)glfwGetTime(); 
+        float atualFrame = (float)glfwGetTime();
         deltaTime = atualFrame - ultimoFrame;
         ultimoFrame = atualFrame;
 
@@ -436,26 +490,47 @@ int main(int argc, char* argv[])
         float right_x =  cos(g_CameraTheta);
         float right_z = -sin(g_CameraTheta);
 
+        // Acumulamos o deslocamento desejado neste frame e só então tentamos
+        // aplicá-lo, verificando colisão eixo a eixo (TryMovePlayer faz o
+        // jogador "deslizar" ao longo de paredes em vez de travar nelas).
+        float desired_dx = 0.0f;
+        float desired_dz = 0.0f;
+
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         {
-            Pos_Player.x += fwd_x * velocidade * deltaTime;
-            Pos_Player.z += fwd_z * velocidade * deltaTime;
+            desired_dx += fwd_x * velocidade * deltaTime;
+            desired_dz += fwd_z * velocidade * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         {
-            Pos_Player.x -= fwd_x * velocidade * deltaTime;
-            Pos_Player.z -= fwd_z * velocidade * deltaTime;
+            desired_dx -= fwd_x * velocidade * deltaTime;
+            desired_dz -= fwd_z * velocidade * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         {
-            Pos_Player.x -= right_x * velocidade * deltaTime;
-            Pos_Player.z -= right_z * velocidade * deltaTime;
+            desired_dx -= right_x * velocidade * deltaTime;
+            desired_dz -= right_z * velocidade * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         {
-            Pos_Player.x += right_x * velocidade * deltaTime;
-            Pos_Player.z += right_z * velocidade * deltaTime;
+            desired_dx += right_x * velocidade * deltaTime;
+            desired_dz += right_z * velocidade * deltaTime;
         }
+
+        TryMovePlayer(desired_dx, desired_dz);
+
+        // Pulo: detectamos a borda de subida da tecla espaço (o instante em que
+        // ela é pressionada, não enquanto fica segurada) e só permitimos pular
+        // quando o jogador está apoiado no chão (sem pulo duplo no ar)
+        bool spacePressedNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround())
+            g_PlayerVelocityY = FORCA_PULO;
+        g_SpaceWasPressed = spacePressedNow;
+
+        // Gravidade: aceleramos a velocidade vertical e tentamos aplicar o
+        // deslocamento resultante; colisões com chão/teto zeram a velocidade
+        g_PlayerVelocityY += GRAVIDADE * deltaTime;
+        TryMovePlayerVertical(g_PlayerVelocityY * deltaTime);
 
 
         // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
@@ -743,8 +818,9 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, DOOR_WALL); 
         DrawVirtualObject("door_wall");
 
-        // Desenhamos o modelo da porta (Aberta 1R)
-        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5f,1.5f,1.5f);
+        // Desenhamos o modelo da porta (Aberta 1R) — aumentada para ficar mais
+        // proporcional ao vão de passagem entre as salas 1 e 2
+        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.9f,1.9f,1.9f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, DOOR);
         DrawVirtualObject("portal_door_combined_model_2");
@@ -1079,6 +1155,209 @@ int main(int argc, char* argv[])
 
     // Fim do programa
     return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Funções de detecção e resposta a colisões (jogador vs. cenário)
+// ----------------------------------------------------------------------------
+
+// Testa se um cilindro vertical (centrado em pos_xz, com raio fixo e faixa de
+// altura [y_min, y_max]) sobrepõe a CollisionAABB 'box'. O teste é decomposto
+// em (1) overlap do intervalo vertical e (2) distância do centro do círculo
+// (projeção do cilindro no plano XZ) ao retângulo formado pela AABB em XZ.
+bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box)
+{
+    // Overlap no eixo vertical (Y)
+    if (y_max < box.min.y || y_min > box.max.y)
+        return false;
+
+    // Ponto do retângulo (projeção da AABB em XZ) mais próximo do centro do círculo
+    float closest_x = glm::clamp(pos_xz.x, box.min.x, box.max.x);
+    float closest_z = glm::clamp(pos_xz.y, box.min.z, box.max.z);
+
+    float dx = pos_xz.x - closest_x;
+    float dz = pos_xz.y - closest_z;
+
+    return (dx*dx + dz*dz) < (raio * raio);
+}
+
+// Testa se o cilindro do jogador, na posição candidata 'pos' (mesma referência
+// de Pos_Player — não os pés diretamente, ver PLAYER_FEET_Y_OFFSET), colide
+// com alguma AABB do cenário registrada em g_CollisionAABBs.
+//
+// O intervalo vertical testado é "encolhido" por COLLISION_SKIN em cada ponta:
+// sem isso, ao ficar exatamente apoiado no chão (pés tocando o topo da AABB do
+// piso) o teste consideraria o jogador permanentemente colidindo também na
+// horizontal, travando todo o movimento. Esse encolhimento permite uma
+// penetração tolerável de poucos centímetros, imperceptível no jogo.
+bool PlayerCollidesAt(const glm::vec3& pos)
+{
+    glm::vec2 pos_xz(pos.x, pos.z);
+    float feet_y = pos.y + PLAYER_FEET_Y_OFFSET;
+    float y_min = feet_y + COLLISION_SKIN;
+    float y_max = feet_y + g_PlayerCollider.altura - COLLISION_SKIN;
+
+    for (const CollisionAABB& box : g_CollisionAABBs)
+    {
+        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, box))
+            return true;
+    }
+    return false;
+}
+
+// Verifica se há piso imediatamente abaixo dos pés do jogador. Usado para só
+// permitir o pulo quando ele está apoiado em uma superfície (sem pulo duplo).
+bool IsPlayerOnGround()
+{
+    const float probe_dist = 0.05f;
+    return PlayerCollidesAt(glm::vec3(Pos_Player.x, Pos_Player.y - probe_dist, Pos_Player.z));
+}
+
+// Aplica um deslocamento vertical 'dy' ao jogador (gravidade/pulo), verificando
+// colisão contra o cenário. Se a posição candidata colide (chão ao cair, teto
+// ao subir), a velocidade vertical é zerada e o jogador permanece onde está.
+void TryMovePlayerVertical(float dy)
+{
+    glm::vec3 candidate = glm::vec3(Pos_Player.x, Pos_Player.y + dy, Pos_Player.z);
+    if (!PlayerCollidesAt(candidate))
+        Pos_Player.y = candidate.y;
+    else
+        g_PlayerVelocityY = 0.0f;
+}
+
+// Move o jogador pelo deslocamento desejado (dx, dz), testando e aplicando
+// cada eixo separadamente. Isso produz o efeito de "deslizar" ao longo de
+// paredes: se o movimento em um eixo causa colisão, ele é descartado, mas o
+// movimento no outro eixo continua sendo aplicado normalmente.
+void TryMovePlayer(float dx, float dz)
+{
+    glm::vec3 candidate_x = glm::vec3(Pos_Player.x + dx, Pos_Player.y, Pos_Player.z);
+    if (!PlayerCollidesAt(candidate_x))
+        Pos_Player.x = candidate_x.x;
+
+    glm::vec3 candidate_z = glm::vec3(Pos_Player.x, Pos_Player.y, Pos_Player.z + dz);
+    if (!PlayerCollidesAt(candidate_z))
+        Pos_Player.z = candidate_z.z;
+}
+
+// Calcula a AABB de mundo de um objeto a partir da sua AABB local (de
+// g_VirtualScene) e da matriz "model" usada para desenhá-lo: transforma os 8
+// cantos da AABB local pela matriz e recomputa o min/max resultante. Válido
+// mesmo quando a matriz inclui rotação e/ou escala.
+CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model)
+{
+    glm::vec3 corners[8] = {
+        glm::vec3(local_min.x, local_min.y, local_min.z),
+        glm::vec3(local_max.x, local_min.y, local_min.z),
+        glm::vec3(local_min.x, local_max.y, local_min.z),
+        glm::vec3(local_max.x, local_max.y, local_min.z),
+        glm::vec3(local_min.x, local_min.y, local_max.z),
+        glm::vec3(local_max.x, local_min.y, local_max.z),
+        glm::vec3(local_min.x, local_max.y, local_max.z),
+        glm::vec3(local_max.x, local_max.y, local_max.z),
+    };
+
+    glm::vec3 world_min( std::numeric_limits<float>::max());
+    glm::vec3 world_max(-std::numeric_limits<float>::max());
+    for (const glm::vec3& corner : corners)
+    {
+        glm::vec3 world_corner = glm::vec3(model * glm::vec4(corner, 1.0f));
+        world_min = glm::min(world_min, world_corner);
+        world_max = glm::max(world_max, world_corner);
+    }
+
+    return CollisionAABB{ world_min, world_max };
+}
+
+// Preenche g_CollisionAABBs com as AABBs de mundo do cenário estático contra
+// o qual o jogador colide: paredes/chão/teto das duas salas (definidas
+// manualmente, já que a geometria é simples e alinhada aos eixos) mais o
+// cubo e o botão (cuja AABB local é transformada pela matriz "model" usada ao
+// desenhá-los). Chamada uma única vez, no setup, pois o cenário é estático.
+void SetupCollisionAABBs()
+{
+    g_CollisionAABBs.clear();
+
+    // Espessura "fake" usada para dar volume às paredes/chão/teto no teste de colisão
+    const float wall_t = 0.1f;
+
+    // Limites das salas (x,z) e altura (y), conforme mapeamento da cena
+    const float sala1_min = -4.0f, sala1_max = 4.0f;
+    const float sala2_min = 4.2f,  sala2_max = 12.0f;
+    const float y_min = -1.0f, y_max = 3.0f;
+
+    // A porta entre a Sala 1 (parede em x=+4) e a Sala 2 (parede em x=+4.2)
+    // fica centrada em z=0. O vão é bem mais largo e alto que o cilindro do
+    // jogador (raio 0.25, altura 0.6, pés ao nível do chão em y=-1), com
+    // bastante folga, para garantir a passagem confortável entre as salas.
+    const float porta_z = 0.0f;
+    const float porta_meia_largura = 0.6f; // metade da largura do vão (vão total = 1.2)
+    const float porta_topo_y = -0.3f;      // altura da verga (acima da cabeça do jogador, que vai até y ≈ -0.4)
+
+    // Cria uma laje retangular de parede (AABB fina ao longo do eixo X)
+    auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi)
+    {
+        if (z_lo < z_hi)
+            g_CollisionAABBs.push_back({ glm::vec3(x_lo, y_lo, z_lo), glm::vec3(x_hi, y_hi, z_hi) });
+    };
+
+    // Parede ao longo do eixo X com um vão de porta centrado em porta_z: gera
+    // os segmentos à esquerda, à direita e a verga (acima da abertura), de modo
+    // que o espaço [porta_z ± porta_meia_largura] x [chão, porta_topo_y] fique livre
+    auto add_wall_with_doorway = [&](float x_lo, float x_hi, float z_lo, float z_hi)
+    {
+        add_wall_slab(x_lo, x_hi, z_lo, porta_z - porta_meia_largura, y_min, y_max);
+        add_wall_slab(x_lo, x_hi, porta_z + porta_meia_largura, z_hi, y_min, y_max);
+        add_wall_slab(x_lo, x_hi, porta_z - porta_meia_largura, porta_z + porta_meia_largura, porta_topo_y, y_max);
+    };
+
+    auto add_room_aabbs = [&](float x_min, float x_max, float z_min, float z_max, bool porta_em_x_min, bool porta_em_x_max)
+    {
+        // Chão e teto
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min - wall_t, y_min);
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_max, y_max + wall_t);
+
+        // Parede em x = x_min
+        if (porta_em_x_min)
+            add_wall_with_doorway(x_min - wall_t, x_min, z_min - wall_t, z_max + wall_t);
+        else
+            add_wall_slab(x_min - wall_t, x_min, z_min - wall_t, z_max + wall_t, y_min, y_max);
+
+        // Parede em x = x_max
+        if (porta_em_x_max)
+            add_wall_with_doorway(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t);
+        else
+            add_wall_slab(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min, y_max);
+
+        // Paredes em z = z_min e z = z_max
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_min, y_min, y_max);
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t, y_min, y_max);
+    };
+
+    // Sala 1: x,z em [-4,+4] — porta na parede x=+4 (passagem para a Sala 2)
+    add_room_aabbs(sala1_min, sala1_max, sala1_min, sala1_max, /*porta_em_x_min=*/false, /*porta_em_x_max=*/true);
+    // Sala 2: x em [+4.2,+12], z em [-4,+6] — porta na parede x=+4.2 (passagem para a Sala 1)
+    add_room_aabbs(sala2_min, sala2_max, -4.0f, 6.0f, /*porta_em_x_min=*/true, /*porta_em_x_max=*/false);
+
+    // Paredes internas da Sala 1 ("prisão" central de vidro + parede sólida)
+    // Cada parede é um the_plane ([-1,1] em local) com as rotações aplicadas na renderização,
+    // resultando em lajes verticais de espessura wall_t centradas nas posições abaixo.
+    // Parede sólida em x=+1
+    g_CollisionAABBs.push_back({ glm::vec3(1.0f - wall_t, y_min, -1.0f), glm::vec3(1.0f + wall_t, y_max, 1.0f) });
+    // Parede de vidro em x=-1
+    g_CollisionAABBs.push_back({ glm::vec3(-1.0f - wall_t, y_min, -1.0f), glm::vec3(-1.0f + wall_t, y_max, 1.0f) });
+    // Parede de vidro em z=+1
+    g_CollisionAABBs.push_back({ glm::vec3(-1.0f, y_min, 1.0f - wall_t), glm::vec3(1.0f, y_max, 1.0f + wall_t) });
+    // Parede de vidro em z=-1
+    g_CollisionAABBs.push_back({ glm::vec3(-1.0f, y_min, -1.0f - wall_t), glm::vec3(1.0f, y_max, -1.0f + wall_t) });
+
+    // Cubo: mesma matriz "model" usada para desenhá-lo (Matrix_Translate(+11,-0.75,5) * Matrix_Scale(1/8,1/8,1/8))
+    glm::mat4 model_cube = Matrix_Translate(+11.0f, -0.75f, 5.0f) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+    g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["Cube"].bbox_min, g_VirtualScene["Cube"].bbox_max, model_cube));
+
+    // Botão: mesma matriz "model" usada para desenhá-lo (Matrix_Translate(9,-1,-1) * Matrix_Scale(1.65,1.65,1.65))
+    glm::mat4 model_button = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(1.65f, 1.65f, 1.65f);
+    g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["portal_button_reduced_2"].bbox_min, g_VirtualScene["portal_button_reduced_2"].bbox_max, model_button));
 }
 
 // Função que carrega uma imagem para ser utilizada como textura
