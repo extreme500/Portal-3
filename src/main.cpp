@@ -818,9 +818,8 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, DOOR_WALL); 
         DrawVirtualObject("door_wall");
 
-        // Desenhamos o modelo da porta (Aberta 1R) — aumentada para ficar mais
-        // proporcional ao vão de passagem entre as salas 1 e 2
-        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.9f,1.9f,1.9f);
+        // Desenhamos o modelo da porta (Aberta 1R)
+        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5f,1.5f,1.5f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, DOOR);
         DrawVirtualObject("portal_door_combined_model_2");

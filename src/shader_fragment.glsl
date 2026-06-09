@@ -295,7 +295,7 @@ void main()
 
         Kd0 = texture(TextureImage9, vec2(U,V)).rgb;
 
-        Ks_map = texture(TextureImage11, vec2(U,V)).r;
+        Ks_map = texture(TextureImage11, vec2(U,V)).r; // Por que não 12?
         
     }
     else if (object_id == CUBE_CIRCLE3)
