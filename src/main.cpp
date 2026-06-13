@@ -130,6 +130,7 @@ void PrintObjModelInfo(ObjModel*); // Função para debugging
 struct CollisionAABB; // forward declaration (struct definida acima de main())
 bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box);
 bool PlayerCollidesAt(const glm::vec3& pos);
+bool BoxCollidesAt(glm::vec3 pos);
 bool IsPlayerOnGround();
 void TryMovePlayer(float dx, float dz);
 void TryMovePlayerVertical(float dy);
@@ -245,6 +246,13 @@ GLuint g_NumLoadedTextures = 0;
 // Variável para a posição global do personagem (e, consequentemente, da câmera)
 glm::vec4 Pos_Player = glm::vec4(.0f,.0f,-2.0f,1.0f);
 float velocidade = 3; // Velocidade do personagem para andar
+
+// Controle da Caixa estilo Portal
+glm::vec3 g_BoxPosition = glm::vec3(11.0f, .0f, 5.0f);
+float g_BoxVelocityY = 0.0f; // Controla a gravidade da caixa
+float g_BoxAngleY = 0.0f;    // Controla a rotação para ela "encarar" o jogador
+bool g_IsHoldingBox = false;
+bool g_EWasPressed = false;
 
 // Representação física do jogador para fins de colisão: um cilindro vertical
 // cujos pés ficam em "Pos_Player.y + PLAYER_FEET_Y_OFFSET" (ver abaixo) e cujo
@@ -740,6 +748,101 @@ int main(int argc, char* argv[])
         glUniform4fv(g_flashlight_dir_uniform, 1, glm::value_ptr(camera_view_vector));
         glUniform1i(g_flashlight_on_uniform, (int)g_FlashlightEnabled);
 
+        
+        // Lógica de Interação com a Caixa (Pegar/Soltar - Física, Gravidade e Raycast)
+        bool ePressedNow = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+        
+        if (ePressedNow && !g_EWasPressed && g_CameraMode == CAMERA_FPS)
+        {
+            if (g_IsHoldingBox) {
+                g_IsHoldingBox = false; // Solta a caixa
+            } else {
+                // Tenta pegar a caixa
+                float dist = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
+                glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
+                float dotProduct = glm::dot(dirToBox, glm::vec3(camera_view_vector));
+                
+                if (dist < 2.0f && dotProduct > 0.85f) {
+                    g_IsHoldingBox = true;
+                    g_BoxVelocityY = 0.0f; // Corta a gravidade enquanto segura
+                }
+            }
+        }
+        g_EWasPressed = ePressedNow;
+
+        if (g_IsHoldingBox)
+        {
+            // O jogador está segurando a caixa: o Raycast
+            glm::vec3 start = glm::vec3(camera_position_c);
+            start.y -= 0.1f; // Abaixa da linha dos olhos para não cegar o jogador
+            glm::vec3 dir = glm::vec3(camera_view_vector);
+            
+            float max_dist = 1.5f;
+            float step = 0.1f;
+            glm::vec3 finalPos = start;
+
+            // Empurra a caixa aos poucos na direção da visão. 
+            // Se ela bater na parede no caminho, ela para antes de atravessar.
+            for (float d = 0.2f; d <= max_dist; d += step) {
+                glm::vec3 testPos = start + dir * d;
+                if (BoxCollidesAt(testPos)) {
+                    break; // Bateu na parede, usamos a última posição válida (finalPos)
+                }
+                finalPos = testPos;
+            }
+            g_BoxPosition = finalPos;
+            
+            // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
+            g_BoxAngleY = g_CameraTheta;
+
+            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
+            // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
+            // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 0.6 unidades,
+            // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
+            float distToPlayer = glm::distance(start, finalPos);
+            if (distToPlayer < 1.0f) {
+                g_IsHoldingBox = false;
+            }
+        }
+        else
+        {
+            // O jogador soltou a caixa: Gravidade!
+            g_BoxVelocityY += GRAVIDADE * deltaTime;
+            
+            // Simula onde a caixa vai estar no próximo frame
+            glm::vec3 candidatePos = g_BoxPosition;
+            candidatePos.y += g_BoxVelocityY * deltaTime;
+
+            // SISTEMA ANTI-PRISÃO (Caixa bate no jogador e não atravessa)
+            // Criamos a hitbox temporária da caixa no frame exato da queda
+            glm::mat4 candidate_model = Matrix_Translate(candidatePos.x, candidatePos.y, candidatePos.z) 
+                                      * Matrix_Rotate_Y(g_BoxAngleY) 
+                                      * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+            
+            CollisionAABB candidateAABB = ComputeWorldAABB(
+                g_VirtualScene["Cube"].bbox_min, 
+                g_VirtualScene["Cube"].bbox_max, 
+                candidate_model
+            );
+            
+            // Variáveis do corpo do jogador
+            glm::vec2 pos_xz(Pos_Player.x, Pos_Player.z);
+            float feet_y = Pos_Player.y + PLAYER_FEET_Y_OFFSET;
+            
+            // Em vez de usar a altura do cilindro físico (-0.4), 
+            // usamos a altura da câmera (+0.3) para a caixa bater na sua "cabeça" real!
+            float y_max_player_real = Pos_Player.y + FPS_EYE_HEIGHT; 
+
+            // Testa se a caixa vai encostar no jogador (do pé até a cabeça)
+            bool bateuNoJogador = CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, feet_y, y_max_player_real, candidateAABB);
+
+            // Se essa queda não fizer ela bater no chão ou num objeto, ela cai
+            if (!BoxCollidesAt(candidatePos)) {
+                g_BoxPosition.y = candidatePos.y;
+            } else {
+                g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
+            }
+        }
 
         // Informações de base sobre a CENA
         // O chão dela acontece em -1.0f
@@ -747,8 +850,6 @@ int main(int argc, char* argv[])
         // As paredes da primeira sala vão de -4.0 até +4.0 em x e em z
         // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
         // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
-        
-
 
         model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
@@ -1050,7 +1151,7 @@ int main(int argc, char* argv[])
         DrawVirtualObject("portal_door_combined_model_1");
 
         // Desenhamos o modelo do cubo
-        model = Matrix_Translate(+11.0f,-0.75f,5.0f)*Matrix_Scale(1/8.00,1/8.00,1/8.00);
+        model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) * Matrix_Rotate_Y(g_BoxAngleY) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, CUBE_003);
         DrawVirtualObject("Cube.003");
@@ -1237,7 +1338,7 @@ bool PlayerCollidesAt(const glm::vec3& pos)
     float y_min = feet_y + COLLISION_SKIN;
     float y_max = feet_y + g_PlayerCollider.altura - COLLISION_SKIN;
 
-    // Testa colisões com caixas (código antigo)
+    // Testa colisões com caixas estáticas (cenário)
     for (const CollisionAABB& box : g_CollisionAABBs)
     {
         if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, box))
@@ -1249,6 +1350,57 @@ bool PlayerCollidesAt(const glm::vec3& pos)
         if (CylinderIntersectsLine(pos_xz, g_PlayerCollider.raio, y_min, y_max, line))
             return true;
     }
+
+    // Testa colisão dinâmica com a CAIXA
+    // O jogador só esbarra na caixa se NÃO estiver segurando ela
+    if (!g_IsHoldingBox) 
+    {
+        // Cria a matriz do cubo exatamente onde ele está no mundo agora
+        glm::mat4 model_cube = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) 
+                            * Matrix_Rotate_Y(g_BoxAngleY) 
+                            * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+    
+        // Calcula a AABB da caixa naquele exato frame
+        CollisionAABB boxAABB = ComputeWorldAABB(
+            g_VirtualScene["Cube"].bbox_min, 
+            g_VirtualScene["Cube"].bbox_max, 
+            model_cube
+        );
+        
+        // Testa se o cilindro do jogador bateu nessa AABB gerada
+        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, boxAABB))
+            return true;    
+    }
+
+    return false;
+}
+
+// Verifica se a caixa está atravessando o cenário físico
+bool BoxCollidesAt(glm::vec3 pos) {
+    // Escala aproximada do cubo no mundo (metade do tamanho total dele)
+    float s = 0.3f; 
+    glm::vec3 min_box = pos + glm::vec3(-s, -s, -s);
+    glm::vec3 max_box = pos + glm::vec3(s, s, s);
+
+    // 1. Testa colisões com o cenário retilíneo (chão, teto, paredes AABB)
+    for (const CollisionAABB& aabb : g_CollisionAABBs) {
+        if (max_box.x > aabb.min.x && min_box.x < aabb.max.x &&
+            max_box.y > aabb.min.y && min_box.y < aabb.max.y &&
+            max_box.z > aabb.min.z && min_box.z < aabb.max.z) 
+        {
+            return true;
+        }
+    }
+    
+    // 2. Testa colisões com paredes diagonais (aproveitando o teste do cilindro)
+    glm::vec2 pos_xz(pos.x, pos.z);
+    for (const CollisionLine& line : g_CollisionLines) {
+        // Usamos a meia-largura (s) como raio para o teste contra a linha
+        if (CylinderIntersectsLine(pos_xz, s, min_box.y, max_box.y, line)) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -1398,10 +1550,6 @@ void SetupCollisionAABBs()
     g_CollisionAABBs.push_back({ glm::vec3(-1.0f, y_min, 1.0f - wall_t), glm::vec3(1.0f, y_max, 1.0f + wall_t) });
     // Parede de vidro em z=-1
     g_CollisionAABBs.push_back({ glm::vec3(-1.0f, y_min, -1.0f - wall_t), glm::vec3(1.0f, y_max, -1.0f + wall_t) });
-
-    // Cubo: mesma matriz "model" usada para desenhá-lo (Matrix_Translate(+11,-0.75,5) * Matrix_Scale(1/8,1/8,1/8))
-    glm::mat4 model_cube = Matrix_Translate(+11.0f, -0.75f, 5.0f) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
-    g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["Cube"].bbox_min, g_VirtualScene["Cube"].bbox_max, model_cube));
 
     // Botão: mesma matriz "model" usada para desenhá-lo (Matrix_Translate(9,-1,-1) * Matrix_Scale(1.65,1.65,1.65))
     glm::mat4 model_button = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(1.65f, 1.65f, 1.65f);
@@ -2280,6 +2428,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     {
         if (g_CameraMode == CAMERA_FPS)
         {
+            g_IsHoldingBox = false;
             g_CameraMode = CAMERA_SECURITY;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
