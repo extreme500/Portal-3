@@ -292,6 +292,8 @@ struct CollisionAABB {
     glm::vec3 max;
 };
 std::vector<CollisionAABB> g_CollisionAABBs;
+// Hitbox dinâmica para a segunda porta (ativa apenas quando fechada)
+CollisionAABB g_ClosedDoorAABB;
 
 // Representa uma parede diagonal no plano XZ
 struct CollisionLine {
@@ -1464,6 +1466,12 @@ bool PlayerCollidesAt(const glm::vec3& pos)
             return true;
     }
 
+    // Testa colisão dinâmica com a PORTA FECHADA
+    if (!g_IsButtonPressed) {
+        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, g_ClosedDoorAABB))
+            return true;
+    }
+
     // Testa colisão dinâmica com a CAIXA
     // O jogador só esbarra na caixa se NÃO estiver segurando ela
     if (!g_IsHoldingBox) 
@@ -1495,7 +1503,7 @@ bool BoxCollidesAt(glm::vec3 pos) {
     glm::vec3 min_box = pos + glm::vec3(-s, -s, -s);
     glm::vec3 max_box = pos + glm::vec3(s, s, s);
 
-    // 1. Testa colisões com o cenário retilíneo (chão, teto, paredes AABB)
+    // Testa colisões com o cenário retilíneo (chão, teto, paredes AABB)
     for (const CollisionAABB& aabb : g_CollisionAABBs) {
         if (max_box.x > aabb.min.x && min_box.x < aabb.max.x &&
             max_box.y > aabb.min.y && min_box.y < aabb.max.y &&
@@ -1505,11 +1513,21 @@ bool BoxCollidesAt(glm::vec3 pos) {
         }
     }
     
-    // 2. Testa colisões com paredes diagonais (aproveitando o teste do cilindro)
+    // Testa colisões com paredes diagonais (aproveitando o teste do cilindro)
     glm::vec2 pos_xz(pos.x, pos.z);
     for (const CollisionLine& line : g_CollisionLines) {
         // Usamos a meia-largura (s) como raio para o teste contra a linha
         if (CylinderIntersectsLine(pos_xz, s, min_box.y, max_box.y, line)) {
+            return true;
+        }
+    }
+
+    // Testa colisão da caixa contra a PORTA FECHADA (CÓDIGO NOVO)
+    if (!g_IsButtonPressed) {
+        if (max_box.x > g_ClosedDoorAABB.min.x && min_box.x < g_ClosedDoorAABB.max.x &&
+            max_box.y > g_ClosedDoorAABB.min.y && min_box.y < g_ClosedDoorAABB.max.y &&
+            max_box.z > g_ClosedDoorAABB.min.z && min_box.z < g_ClosedDoorAABB.max.z) 
+        {
             return true;
         }
     }
@@ -1653,24 +1671,22 @@ void SetupCollisionAABBs()
     const float sala2_min = 4.2f,  sala2_max = 12.0f;
     const float y_min = -1.0f, y_max = 3.0f;
 
-    // A porta entre a Sala 1 (parede em x=+4) e a Sala 2 (parede em x=+4.2)
-    // fica centrada em z=0. O vão é bem mais largo e alto que o cilindro do
-    // jogador (raio 0.25, altura 0.6, pés ao nível do chão em y=-1), com
-    // bastante folga, para garantir a passagem confortável entre as salas.
+    // A porta entre a Sala 1 e a Sala 2 (centrada em Z = 0)
     const float porta_z = 0.0f;
-    const float porta_meia_largura = 0.6f; // metade da largura do vão (vão total = 1.2)
-    const float porta_topo_y = 0.5f;      // altura da verga (acima da cabeça do jogador, que vai até y ≈ 0.5)
+    // A nova porta no final da Sala 2 (centrada em X = 8.0)
+    const float porta2_x = 8.0f; 
+    
+    const float porta_meia_largura = 0.6f; 
+    const float porta_topo_y = 0.5f;      
 
-    // Cria uma laje retangular de parede (AABB fina ao longo do eixo X)
+    // Cria uma laje retangular de parede (AABB)
     auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi)
     {
-        if (z_lo < z_hi)
+        if (z_lo < z_hi && x_lo < x_hi)
             g_CollisionAABBs.push_back({ glm::vec3(x_lo, y_lo, z_lo), glm::vec3(x_hi, y_hi, z_hi) });
     };
 
-    // Parede ao longo do eixo X com um vão de porta centrado em porta_z: gera
-    // os segmentos à esquerda, à direita e a verga (acima da abertura), de modo
-    // que o espaço [porta_z ± porta_meia_largura] x [chão, porta_topo_y] fique livre
+    // Corta um buraco em uma parede que corre paralela ao eixo Z
     auto add_wall_with_doorway = [&](float x_lo, float x_hi, float z_lo, float z_hi)
     {
         add_wall_slab(x_lo, x_hi, z_lo, porta_z - porta_meia_largura, y_min, y_max);
@@ -1678,7 +1694,16 @@ void SetupCollisionAABBs()
         add_wall_slab(x_lo, x_hi, porta_z - porta_meia_largura, porta_z + porta_meia_largura, porta_topo_y, y_max);
     };
 
-    auto add_room_aabbs = [&](float x_min, float x_max, float z_min, float z_max, bool porta_em_x_min, bool porta_em_x_max)
+    // Corta um buraco em uma parede que corre paralela ao eixo X (NOVO)
+    auto add_wall_with_doorway_z = [&](float x_lo, float x_hi, float z_lo, float z_hi)
+    {
+        add_wall_slab(x_lo, porta2_x - porta_meia_largura, z_lo, z_hi, y_min, y_max);
+        add_wall_slab(porta2_x + porta_meia_largura, x_hi, z_lo, z_hi, y_min, y_max);
+        add_wall_slab(porta2_x - porta_meia_largura, porta2_x + porta_meia_largura, z_lo, z_hi, porta_topo_y, y_max);
+    };
+
+    // Constrói a sala inteira. Adicionamos o parâmetro 'porta_em_z_max' com valor padrão 'false'.
+    auto add_room_aabbs = [&](float x_min, float x_max, float z_min, float z_max, bool porta_em_x_min, bool porta_em_x_max, bool porta_em_z_max = false)
     {
         // Chão e teto
         add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min - wall_t, y_min);
@@ -1696,15 +1721,22 @@ void SetupCollisionAABBs()
         else
             add_wall_slab(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min, y_max);
 
-        // Paredes em z = z_min e z = z_max
+        // Parede em z = z_min (Fundos)
         add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_min, y_min, y_max);
-        add_wall_slab(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t, y_min, y_max);
+        
+        // Parede em z = z_max (Frente)
+        if (porta_em_z_max)
+            add_wall_with_doorway_z(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t);
+        else
+            add_wall_slab(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t, y_min, y_max);
     };
 
-    // Sala 1: x,z em [-4,+4] — porta na parede x=+4 (passagem para a Sala 2)
-    add_room_aabbs(sala1_min, sala1_max, sala1_min, sala1_max, /*porta_em_x_min=*/false, /*porta_em_x_max=*/true);
-    // Sala 2: x em [+4.2,+12], z em [-4,+6] — porta na parede x=+4.2 (passagem para a Sala 1)
-    add_room_aabbs(sala2_min, sala2_max, -4.0f, 6.0f, /*porta_em_x_min=*/true, /*porta_em_x_max=*/false);
+    // Sala 1: x,z em [-4,+4] — porta na parede x=+4
+    add_room_aabbs(sala1_min, sala1_max, sala1_min, sala1_max, false, true);
+    
+    // Sala 2: x em [+4.2,+12], z em [-4,+6] — porta na parede x=+4.2 E porta na parede z=+6.0
+    // O último 'true' ativa o novo buraco que criamos!
+    add_room_aabbs(sala2_min, sala2_max, -4.0f, 6.0f, true, false, true);
 
     // Paredes internas da Sala 1 ("prisão" central de vidro + parede sólida)
     // Cada parede é um the_plane ([-1,1] em local) com as rotações aplicadas na renderização,
@@ -1734,6 +1766,19 @@ void SetupCollisionAABBs()
         y_min,                                       // Chão (-1.0f)
         y_max                                        // Teto (3.0f)
     });
+
+    // Hitbox dinâmica da porta 2 (Fechada)
+    // Usamos 3.14159265f no lugar de M_PI pois a macro foi definida dentro do main
+    glm::mat4 model_door_closed = Matrix_Translate(8.0f, -1.0f, 6.1f) 
+                                * Matrix_Rotate_Y(3.14159265f) 
+                                * Matrix_Scale(1.5f, 1.5f, 1.5f);
+                                
+    g_ClosedDoorAABB = ComputeWorldAABB(
+        g_VirtualScene["portal_door_combined_model_1"].bbox_min, 
+        g_VirtualScene["portal_door_combined_model_1"].bbox_max, 
+        model_door_closed
+    );
+
 }
 
 // Função que carrega uma imagem para ser utilizada como textura
