@@ -315,6 +315,10 @@ bool g_FlashlightEnabled = false;
 enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
 CameraMode g_CameraMode = CAMERA_FPS;
 
+// Controle de múltiplas câmeras de segurança ---
+int g_ActiveSecurityCamera = 0; // 0 = Sala 1, 1 = Sala 2
+int g_TotalSecurityCameras = 2; //
+
 // Variável para movimentação do modelo da Câmera de Segurança
 int mov_sec_camera = 1;
 
@@ -619,55 +623,85 @@ int main(int argc, char* argv[])
         }
         else // CAMERA_SECURITY
         {
-            // Posição fixa no canto superior da sala 1
-            camera_position_c = glm::vec4(-3.8f, 2.8f, -3.8f, 1.0f);
+            // Define a posição base dependendo de qual câmera está ativa
+            if (g_ActiveSecurityCamera == 0) {
+                camera_position_c = glm::vec4(-3.8f, 2.8f, -3.8f, 1.0f); // Sala 1
+            } else {
+                camera_position_c = glm::vec4(8.0f, 2.8f, 5.8f, 1.0f);   // Sala 2
+            }
 
-            // Bézier cúbica POR PARTES em formato de Z — 3 segmentos que passam
-            // exatamente pelos 4 waypoints, cobrindo toda a sala:
-            //   Segmento 0: topo-esquerdo  → topo-direito   (traço superior do Z)
-            //   Segmento 1: topo-direito   → baixo-esquerdo  (diagonal do Z)
-            //   Segmento 2: baixo-esquerdo → baixo-direito   (traço inferior do Z)
-            //
-            // Velocidade: ping-pong linear + smoothstep POR SEGMENTO,
-            // para que a câmera desacelere naturalmente em cada waypoint antes de
-            // mudar de direção.
-            float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD)
-                         / SECURITY_CAM_SWEEP_PERIOD;
-            float ping = raw < 1.0f ? raw : 2.0f - raw;
-
-            const glm::vec4 wp[4] = {
-                // Topo-Direito (Olhando a parede paralela ao eixo X)
-                glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
+            // Define a direção da visão com base no modo (mov_sec_camera)
+            if (mov_sec_camera == 1) 
+            {
+                // --- MODO 1: Seguir o Jogador (LookAt) ---
+                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
                 
-                // Topo-Esquerdo (Olhando a parede paralela ao eixo Z)
-                glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
+                // Aplica o sistema anti-parede apenas para a câmera 0 (para não atravessar a parede)
+                if (g_ActiveSecurityCamera == 0) {
+                    float dist_x = std::abs(target_player.x - camera_position_c.x);
+                    float dist_z = std::abs(target_player.z - camera_position_c.z);
+                    float dist = std::max(dist_x, dist_z);
+                    float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+                    float limite_parede = glm::mix(-1.3f, -2.8f, t);
+                    
+                    if (target_player.x < limite_parede) target_player.x = limite_parede;
+                    if (target_player.z < limite_parede) target_player.z = limite_parede;
+                }
+
+                // O vetor de visão global é do alvo até a câmera
+                glm::vec3 dir = target_player - glm::vec3(camera_position_c);
+                camera_view_vector = glm::vec4(dir.x, dir.y, dir.z, 0.0f);
+            }
+            else
+            {
+                // --- MODO 2: Varredura Automática (Bézier) ---
+                // O cálculo de tempo é o mesmo para todas as câmeras
+                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
+                float ping = raw < 1.0f ? raw : 2.0f - raw;
+                int   seg  = (int)(ping * 3.0f);
+                if (seg > 2) seg = 2;
+                float local_t = ping * 3.0f - (float)seg;
+                if (local_t > 1.0f) local_t = 1.0f;
+                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
                 
-                // Baixo-Direito (Diagonal de volta para a parede do eixo X)
-                glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
-                
-                // Baixo-Esquerdo (Finaliza olhando a parede do eixo Z novamente)
-                glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
-            };
+                if (g_ActiveSecurityCamera == 0) 
+                {
+                    // --- CÂMERA 0: Sala 1 ---
 
-            int   seg     = (int)(ping * 3.0f);
-            if (seg > 2) seg = 2;
-            float local_t = ping * 3.0f - (float)seg;
-            if (local_t > 1.0f) local_t = 1.0f;
+                    const glm::vec4 wp[4] = {
+                        glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
+                        glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
+                        glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
+                        glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
+                    };
 
-            // Smoothstep por segmento: ease-in/ease-out em cada waypoint
-            float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+                    glm::vec4 from = wp[seg];
+                    glm::vec4 to   = wp[seg + 1];
+                    glm::vec4 lookat_target = BezierCubic(
+                        from, from + (to - from) * (1.0f / 3.0f), from + (to - from) * (2.0f / 3.0f), to, smooth_t
+                    );
+                    camera_view_vector = lookat_target - camera_position_c;
+                }
+                else if (g_ActiveSecurityCamera == 1)
+                {
+                    // --- CÂMERA 1: Sala 2 (Em cima da porta olhando pra frente) ---
 
-            // Bézier cúbica com pontos de controle colineares = linha reta garantida
-            glm::vec4 from = wp[seg];
-            glm::vec4 to   = wp[seg + 1];
-            glm::vec4 lookat_target = BezierCubic(
-                from,
-                from + (to - from) * (1.0f / 3.0f),
-                from + (to - from) * (2.0f / 3.0f),
-                to,
-                smooth_t
-            );
-            camera_view_vector = lookat_target - camera_position_c;
+                    // Sala 2 vai de X: 4.2 a 12, Z: -4 a 6. A porta aberta está em (8, y, 6).
+                const glm::vec4 wp[4] = {
+                        glm::vec4( 4.5f,  1.0f,  2.0f, 1.0f), // 0: Perto Esquerda
+                        glm::vec4(11.5f,  1.0f, -3.5f, 1.0f), // 1: Longe Direita
+                        glm::vec4( 4.5f, -0.8f, -3.5f, 1.0f), // 2: Longe Esquerda
+                        glm::vec4(11.5f, -0.8f,  2.0f, 1.0f), // 3: Perto Direita
+                    };
+
+                    glm::vec4 from = wp[seg];
+                    glm::vec4 to   = wp[seg + 1];
+                    glm::vec4 lookat_target = BezierCubic(
+                        from, from + (to - from) * (1.0f / 3.0f), from + (to - from) * (2.0f / 3.0f), to, smooth_t
+                    );
+                    camera_view_vector = lookat_target - camera_position_c;
+                }
+            }
         }
 
         // Garantir que position_c é ponto (w=1) e view_vector é vetor (w=0),
@@ -1026,7 +1060,6 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, SEC_CAM);
         DrawVirtualObject("security_camera_2.001");
 
-
         // Cena Da 2R
 
         // Desenhamos o plano do chão 1/2 (2R)
@@ -1146,7 +1179,6 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, DOOR_WALL); 
         DrawVirtualObject("door_wall");
 
-
         // Desenhamos o modelo do cubo
         model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) * Matrix_Rotate_Y(g_BoxAngleY) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
@@ -1188,7 +1220,94 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, BUTTON_001);
         DrawVirtualObject("portal_button_reduced_2.001");
 
-        
+
+        // Desenhamos a câmera que segue o jogador/curva de Bézier (2R)
+        // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
+        glFrontFace(GL_CW);
+        model = Matrix_Translate(8.0f, 2.8f, 5.8f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(-1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, SEC_CAM);
+        DrawVirtualObject("security_camera_2");
+        glFrontFace(GL_CCW);
+        // Depois, desenhamos a "câmera", que se movimenta
+        sec_cam_pos = glm::vec3(8.0f, 2.8f, 5.8f);
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            if (mov_sec_camera == 1) 
+            {
+                // --- MODO 1: Lente mira no jogador (Câmera 2) ---
+                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
+                
+                // Calculamos o quão de lado o jogador está em relação à câmera (eixo X)
+                // Posição da câmera 2 no eixo X é 8.0f
+                float dist_x = std::abs(target_player.x - 8.0f);
+
+                // Mapeamos essa distância lateral para o nosso fator 't' (0.0 a 1.0)
+                // Se ele estiver até 1.0 unidade pro lado, t = 0 (Perto)
+                // Se ele estiver a 3.0 unidades ou mais pro lado, t = 1 (Longe nos cantos)
+                float t = glm::clamp((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
+
+                // Interpolação linear (Lerp): 
+                // Se t=0 (jogador na frente), o limite de Z é 5.6 (quase debaixo da câmera).
+                // Se t=1 (jogador nos cantos), forçamos o limite de Z para 4.5 (empurra a visão pro meio da sala).
+                float limite_parede_z = glm::mix(1.5f, 7.5f, t);
+
+                // Aplica o limite! Como a câmera olha para valores negativos de Z (fundo da sala),
+                // nós não deixamos o alvo da câmera ultrapassar o limite seguro.
+                if (target_player.z > limite_parede_z) {
+                    target_player.z = limite_parede_z;
+                }
+
+                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+            }
+            else if (mov_sec_camera == 2)
+            {
+                // MODO 2: Lente faz o Bézier
+                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
+                float ping = raw < 1.0f ? raw : 2.0f - raw;
+
+                const glm::vec4 wp[4] = {
+                    glm::vec4( 4.5f,  1.0f,  2.0f, 1.0f), // 0: Perto Esquerda
+                    glm::vec4(11.5f,  1.0f, -3.5f, 1.0f), // 1: Longe Direita
+                    glm::vec4( 4.5f, -0.8f, -3.5f, 1.0f), // 2: Longe Esquerda
+                    glm::vec4(11.5f, -0.8f,  2.0f, 1.0f), // 3: Perto Direita
+                };
+
+                int seg = (int)(ping * 3.0f);
+                if (seg > 2) seg = 2;
+                float local_t = ping * 3.0f - (float)seg;
+                if (local_t > 1.0f) local_t = 1.0f;
+
+                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+
+                glm::vec4 from = wp[seg];
+                glm::vec4 to   = wp[seg + 1];
+                glm::vec4 lookat_target = BezierCubic(
+                    from,
+                    from + (to - from) * (1.0f / 3.0f),
+                    from + (to - from) * (2.0f / 3.0f),
+                    to,
+                    smooth_t
+                );
+                
+                // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
+                glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
+                sec_cam_front = glm::normalize(bezier_dir);
+            }
+        }
+        else // CAMERA_SECURITY
+        {
+            // Se estamos enxergando PELA câmera de segurança, o modelo físico 
+            // e a câmera global olham exatamente para a mesma direção.
+            sec_cam_front = glm::normalize(glm::vec3(camera_view_vector));
+        }
+        up = glm::vec3(0.0f, 1.0f, 0.0f);
+        rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        model = Matrix_Translate(8.0f, 2.8f, 5.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, SEC_CAM);
+        DrawVirtualObject("security_camera_2.001");
+
 
         // Voltamos para a Sala 1 (a parte transparente precisa ser renderizada por último)
 
@@ -2523,6 +2642,16 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     if (key == GLFW_KEY_F && action == GLFW_PRESS)
     {
         g_FlashlightEnabled = !g_FlashlightEnabled;
+    }
+
+    if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS && g_CameraMode == CAMERA_SECURITY)
+    {
+        g_ActiveSecurityCamera = (g_ActiveSecurityCamera + 1) % g_TotalSecurityCameras;
+    }
+    if (key == GLFW_KEY_LEFT && action == GLFW_PRESS && g_CameraMode == CAMERA_SECURITY)
+    {
+        // Soma g_TotalSecurityCameras antes do módulo para evitar números negativos em C++
+        g_ActiveSecurityCamera = (g_ActiveSecurityCamera - 1 + g_TotalSecurityCameras) % g_TotalSecurityCameras;
     }
     
 
