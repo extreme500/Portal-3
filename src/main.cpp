@@ -131,6 +131,7 @@ struct CollisionAABB; // forward declaration (struct definida acima de main())
 bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box);
 bool PlayerCollidesAt(const glm::vec3& pos);
 bool BoxCollidesAt(glm::vec3 pos);
+bool IsButtonTriggered();
 bool IsPlayerOnGround();
 void TryMovePlayer(float dx, float dz);
 void TryMovePlayerVertical(float dy);
@@ -253,6 +254,9 @@ float g_BoxVelocityY = 0.0f; // Controla a gravidade da caixa
 float g_BoxAngleY = 0.0f;    // Controla a rotação para ela "encarar" o jogador
 bool g_IsHoldingBox = false;
 bool g_EWasPressed = false;
+
+// Controle botão (objeto) pressionado
+bool g_IsButtonPressed = false;
 
 // Representação física do jogador para fins de colisão: um cilindro vertical
 // cujos pés ficam em "Pos_Player.y + PLAYER_FEET_Y_OFFSET" (ver abaixo) e cujo
@@ -1143,13 +1147,6 @@ int main(int argc, char* argv[])
         DrawVirtualObject("door_wall");
 
 
-        // Desenhamos o modelo da porta (Fechada ou Aberta 2R-3R)
-        model = Matrix_Translate(8.0f, -1.0f,+6.1f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.5f,1.5f,1.5f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR);
-        // if open então model_2
-        DrawVirtualObject("portal_door_combined_model_1");
-
         // Desenhamos o modelo do cubo
         model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) * Matrix_Rotate_Y(g_BoxAngleY) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
@@ -1165,11 +1162,29 @@ int main(int argc, char* argv[])
         glUniform1i(g_object_id_uniform, CUBE);
         DrawVirtualObject("Cube");
 
+        // Verifica se tem algum objeto em cima do botão
+        g_IsButtonPressed = IsButtonTriggered();
+
+        // Desenhamos o modelo da porta (Fechada ou Aberta 2R-3R)
+        model = Matrix_Translate(8.0f, -1.0f,+6.1f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.5f,1.5f,1.5f);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, DOOR);
+        if (g_IsButtonPressed) {
+        // Desenha o modelo da porta ABERTA
+            DrawVirtualObject("portal_door_combined_model_2"); 
+        } else {
+            // Desenha o modelo da porta FECHADA
+            DrawVirtualObject("portal_door_combined_model_1");
+        }
+
         // Desenhamos o modelo do botão
+        float y_offset = g_IsButtonPressed ? -0.05f : 0.0f;
         model = Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, BUTTON);
         DrawVirtualObject("portal_button_reduced_2");
+        model = Matrix_Translate(9.0f, -1.0f + y_offset,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, BUTTON_001);
         DrawVirtualObject("portal_button_reduced_2.001");
 
@@ -1404,6 +1419,30 @@ bool BoxCollidesAt(glm::vec3 pos) {
     return false;
 }
 
+bool IsButtonTriggered() {
+    // Definir a área do botão (o gatilho)
+    glm::vec3 b_min = glm::vec3(8.5f, -1.0f, -1.5f);
+    glm::vec3 b_max = glm::vec3(9.5f, -0.5f, -0.5f);
+
+    // Testa Jogador
+    // O cilindro do jogador está sobre o botão?
+    if (Pos_Player.x >= b_min.x && Pos_Player.x <= b_max.x &&
+        Pos_Player.z >= b_min.z && Pos_Player.z <= b_max.z &&
+        (Pos_Player.y + PLAYER_FEET_Y_OFFSET) <= b_max.y) {
+        return true;
+    }
+
+    // Testa Caixa
+    // A caixa está sobre o botão?
+    if (g_BoxPosition.x >= b_min.x && g_BoxPosition.x <= b_max.x &&
+        g_BoxPosition.z >= b_min.z && g_BoxPosition.z <= b_max.z &&
+        g_BoxPosition.y <= b_max.y) {
+        return true;
+    }
+
+    return false;
+}
+
 // Verifica se há piso imediatamente abaixo dos pés do jogador. Usado para só
 // permitir o pulo quando ele está apoiado em uma superfície (sem pulo duplo).
 bool IsPlayerOnGround()
@@ -1430,13 +1469,43 @@ void TryMovePlayerVertical(float dy)
 // movimento no outro eixo continua sendo aplicado normalmente.
 void TryMovePlayer(float dx, float dz)
 {
+    // Define a altura máxima de um degrau que o jogador consegue subir apenas andando.
+    // O seu botão é relativamente baixo, então 0.3f deve cobrir perfeitamente.
+    const float MAX_STEP_HEIGHT = 0.3f; 
+
+    // Tenta mover no eixo X
     glm::vec3 candidate_x = glm::vec3(Pos_Player.x + dx, Pos_Player.y, Pos_Player.z);
     if (!PlayerCollidesAt(candidate_x))
+    {
         Pos_Player.x = candidate_x.x;
+    }
+    else if (IsPlayerOnGround()) 
+    {
+        // Bateu em X! O jogador está no chão, então testamos a posição mais alta (o degrau)
+        glm::vec3 candidate_step_x = glm::vec3(Pos_Player.x + dx, Pos_Player.y + MAX_STEP_HEIGHT, Pos_Player.z);
+        if (!PlayerCollidesAt(candidate_step_x))
+        {
+            Pos_Player.x = candidate_step_x.x;
+            Pos_Player.y = candidate_step_x.y; // Levanta o jogador para cima do obstáculo
+        }
+    }
 
+    // Tenta mover no eixo Z
     glm::vec3 candidate_z = glm::vec3(Pos_Player.x, Pos_Player.y, Pos_Player.z + dz);
     if (!PlayerCollidesAt(candidate_z))
+    {
         Pos_Player.z = candidate_z.z;
+    }
+    else if (IsPlayerOnGround())
+    {
+        // Bateu em Z! Testamos a subida no degrau também.
+        glm::vec3 candidate_step_z = glm::vec3(Pos_Player.x, Pos_Player.y + MAX_STEP_HEIGHT, Pos_Player.z + dz);
+        if (!PlayerCollidesAt(candidate_step_z))
+        {
+            Pos_Player.z = candidate_step_z.z;
+            Pos_Player.y = candidate_step_z.y;
+        }
+    }
 }
 
 // Calcula a AABB de mundo de um objeto a partir da sua AABB local (de
@@ -1492,7 +1561,7 @@ void SetupCollisionAABBs()
     // bastante folga, para garantir a passagem confortável entre as salas.
     const float porta_z = 0.0f;
     const float porta_meia_largura = 0.6f; // metade da largura do vão (vão total = 1.2)
-    const float porta_topo_y = 0.5f;      // altura da verga (acima da cabeça do jogador, que vai até y ≈ -0.4)
+    const float porta_topo_y = 0.5f;      // altura da verga (acima da cabeça do jogador, que vai até y ≈ 0.5)
 
     // Cria uma laje retangular de parede (AABB fina ao longo do eixo X)
     auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi)
