@@ -259,7 +259,7 @@ bool g_EWasPressed = false;
 // topo fica altura unidades acima disso.
 struct PlayerCollider {
     float raio   = 0.25f;
-    float altura = 0.6f;
+    float altura = 1.4f;
 };
 PlayerCollider g_PlayerCollider;
 
@@ -1492,7 +1492,7 @@ void SetupCollisionAABBs()
     // bastante folga, para garantir a passagem confortável entre as salas.
     const float porta_z = 0.0f;
     const float porta_meia_largura = 0.6f; // metade da largura do vão (vão total = 1.2)
-    const float porta_topo_y = -0.3f;      // altura da verga (acima da cabeça do jogador, que vai até y ≈ -0.4)
+    const float porta_topo_y = 0.5f;      // altura da verga (acima da cabeça do jogador, que vai até y ≈ -0.4)
 
     // Cria uma laje retangular de parede (AABB fina ao longo do eixo X)
     auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi)
