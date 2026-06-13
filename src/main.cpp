@@ -511,6 +511,14 @@ int main(int argc, char* argv[])
         deltaTime = atualFrame - ultimoFrame;
         ultimoFrame = atualFrame;
 
+        // Limitador de Delta Time (Anti-Tunneling) ---
+        // Se o frame demorar mais de 0.05 segundos (menos de 20 FPS) devido a 
+        // arrastar a janela ou lag, nós travamos o tempo para a física não explodir.
+        if (deltaTime > 0.05f) 
+        {
+            deltaTime = 0.05f;
+        }
+
         // Movimento do jogador relativo à direção da câmera FPS
         float fwd_x = -sin(g_CameraTheta);
         float fwd_z = -cos(g_CameraTheta);
