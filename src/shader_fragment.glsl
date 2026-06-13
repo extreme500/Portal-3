@@ -98,21 +98,43 @@ float clearcoatGloss = 1.0;
 const float PI = 3.14159265358979323846;
 
 // Luzes direcionais configuradas diretamente no shader.
-// --- LUZES DA SALA 1 (Point Lights) ---
-const int LIGHT_COUNT = 4; // 4 cantos da sala 1R
+// --- LUZES DA CENA (Point Lights) ---
+const int LIGHT_COUNT = 10; // 4 da Sala 1 + 6 da Sala 2
+
 const vec3 LIGHT_POSITIONS[LIGHT_COUNT] = vec3[](
+    // ================= SALA 1 =================
     vec3( 3.8, 2.9,  3.8), // Canto Superior Direito (Frente)
     vec3(-3.8, 2.9,  3.8), // Canto Superior Esquerdo (Frente)
     vec3( 3.8, 2.9, -3.8), // Canto Superior Direito (Trás)
-    vec3(-3.8, 2.9, -3.8)  // Canto Superior Esquerdo (Trás)
+    vec3(-3.8, 2.9, -3.8), // Canto Superior Esquerdo (Trás)
+
+    // ================= SALA 2 =================
+    // A Sala 2 vai de X=4 a 12, e Z=-4 a 12.
+    
+    // Fundo da Sala 2 (Z = 11.0)
+    vec3( 4.8, 2.9, 11.0), // Esquerda Fundo
+    vec3(11.2, 2.9, 11.0), // Direita Fundo
+    
+    // Meio da Sala 2 (Z = 4.0)
+    vec3( 4.4, 2.9,  5.8), // Esquerda Meio
+    vec3(11.8, 2.9,  5.8), // Direita Meio
+    
+    // Frente da Sala 2 (Z perto de -3.0)
+    vec3( 4.4, 2.9, -3.8), // Esquerda Frente (Perto da porta da Sala 1)
+    
+    // A PAREDE DIAGONAL: Fica em X=11.0, Z=-2.7. 
+    // Vamos puxar essa luz mais para o meio (X=9.5, Z=-1.5) para ela não ficar dentro do concreto!
+    vec3( 9.5, 2.9, -3.8)  
 );
 
-// Cor das luzes (um branco levemente azulado, estilo laboratório)
+// Cor das luzes (O tom azulado frio de laboratório)
 const vec3 LIGHT_COLORS[LIGHT_COUNT] = vec3[](
-    vec3(0.4, 0.6, 0.8),
-    vec3(0.4, 0.6, 0.8),
-    vec3(0.4, 0.6, 0.8),
-    vec3(0.4, 0.6, 0.8)
+    // Sala 1 (4 luzes)
+    vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8),
+    
+    // Sala 2 (6 luzes)
+    vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), 
+    vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8)
 );
 
 // Constantes
@@ -424,7 +446,11 @@ void main()
         vec3 l = normalize(light_dir);
 
         // Atenuação: a luz perde força conforme chega no chão ou no meio da sala
-        float attenuation = 1.0 / (1.0 + 0.05 * dist + 0.02 * (dist * dist));
+        // Fraca/original, caso queiramos comparar:
+        // float attenuation = 1.0 / (1.0 + 0.09 * dist + 0.04 * (dist * dist));
+
+        // Forte/nova: A luz perde força rapidamente, criando cantos escuros.
+        float attenuation = 1.0 / (1.0 + 0.14 * dist + 0.07 * (dist * dist));
 
         // Termo Difuso (Lambert)
         float lambert = max(0.0, dot(n.xyz, l));
@@ -442,7 +468,8 @@ void main()
     }
 
     // Luz ambiente bem fraca (para as sombras não ficarem 100% pretas)
-    vec3 ambient_light = Kd0 * 0.05;
+    // A original, para comparação também, era 0.05, mas foi diminuída para criar um ambiente levemente mais escuro/dependente das luzes
+    vec3 ambient_light = Kd0 * 0.01;
 
     // Consideramos a lanterna do jogador, se ligada
     vec3 flashlight_color = vec3(0.85, 0.95, 1.0); // Cor levemente amarelada

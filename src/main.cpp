@@ -539,7 +539,7 @@ int main(int argc, char* argv[])
         // Conversaremos sobre sistemas de cores nas aulas de Modelos de Iluminação.
         //
         //           R     G     B     A
-        glClearColor(0.9f, 0.9f, 1.0f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
         // "Pintamos" todos os pixels do framebuffer com a cor definida acima,
         // e também resetamos todos os pixels do Z-buffer (depth buffer).
@@ -1054,7 +1054,7 @@ int main(int argc, char* argv[])
         DrawVirtualObject("Cube");
 
         // Desenhamos o modelo do botão
-        model = Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(1.65,1.65,1.65);
+        model = Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, BUTTON);
         DrawVirtualObject("portal_button_reduced_2");
