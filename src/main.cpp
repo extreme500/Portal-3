@@ -137,6 +137,7 @@ void TryMovePlayer(float dx, float dz);
 void TryMovePlayerVertical(float dy);
 CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model);
 void SetupCollisionAABBs();
+void ResetScene();
 
 
 // Declaração de funções auxiliares para renderizar texto dentro da janela
@@ -1781,6 +1782,41 @@ void SetupCollisionAABBs()
 
 }
 
+// Restaura a posição e o estado de todos os elementos dinâmicos do jogo
+void ResetScene()
+{
+    // 1. Reset do Jogador e Câmera
+    Pos_Player = glm::vec4(0.0f, 0.0f, -2.0f, 1.0f);
+    g_CameraTheta = 0.0f;
+    g_CameraPhi = 0.0f;
+    g_PlayerVelocityY = 0.0f;
+    g_SpaceWasPressed = false;
+    
+    // 2. Reset da Caixa
+    g_BoxPosition = glm::vec3(11.0f, 0.0f, 5.0f);
+    g_BoxVelocityY = 0.0f;
+    g_BoxAngleY = 0.0f;
+    g_IsHoldingBox = false;
+    g_EWasPressed = false;
+
+    // 3. Reset do Cenário
+    g_IsButtonPressed = false;
+    g_FlashlightEnabled = false;
+
+    // 4. Reset dos Modos de Visualização
+    g_CameraMode = CAMERA_FPS;
+    mov_sec_camera = 1;
+
+    // 5. Reset das variáveis de debug/poses (Opcional, mas recomendado)
+    g_AngleX = 0.0f; 
+    g_AngleY = 0.0f; 
+    g_AngleZ = 0.0f;
+    g_ForearmAngleX = 0.0f; 
+    g_ForearmAngleZ = 0.0f;
+    g_TorsoPositionX = 0.0f; 
+    g_TorsoPositionY = 0.0f;
+}
+
 // Função que carrega uma imagem para ser utilizada como textura
 void LoadTextureImage(const char* filename, bool deveRepetir)
 {
@@ -2615,13 +2651,21 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         g_ShowInfoText = !g_ShowInfoText;
     }
 
-    // Se o usuário apertar a tecla R, recarregamos os shaders dos arquivos "shader_fragment.glsl" e "shader_vertex.glsl".
-    if (key == GLFW_KEY_R && action == GLFW_PRESS)
+    
+    // Se o usuário apertar a tecla R, reinicia a cena inteira.
+    if (key == GLFW_KEY_R && action == GLFW_PRESS && g_CameraMode == CAMERA_FPS)
     {
-        LoadShadersFromFiles();
-        fprintf(stdout,"Shaders recarregados!\n");
+        ResetScene();
         fflush(stdout);
     }
+
+    // Se o usuário apertar a tecla T, recarregamos os shaders dos arquivos "shader_fragment.glsl" e "shader_vertex.glsl".
+    if (key == GLFW_KEY_T && action == GLFW_PRESS)
+    {
+        LoadShadersFromFiles();
+        fflush(stdout);
+    }
+
 
     // Tecla C alterna entre câmera FPS e câmera de segurança
     if (key == GLFW_KEY_C && action == GLFW_PRESS)
