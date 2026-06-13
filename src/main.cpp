@@ -281,6 +281,17 @@ struct CollisionAABB {
 };
 std::vector<CollisionAABB> g_CollisionAABBs;
 
+// Representa uma parede diagonal no plano XZ
+struct CollisionLine {
+    glm::vec2 p1;    // Ponto inicial da parede (X, Z)
+    glm::vec2 p2;    // Ponto final da parede (X, Z)
+    float y_min;     // Base da parede (chão)
+    float y_max;     // Topo da parede (teto)
+};
+
+// Vetor global para armazenar as paredes diagonais do cenário
+std::vector<CollisionLine> g_CollisionLines;
+
 // Variáveis para controle de tempo
 float ultimoFrame = 0.0f;
 float deltaTime = 0.0f;
@@ -1180,6 +1191,36 @@ bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_m
     return (dx*dx + dz*dz) < (raio * raio);
 }
 
+bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min_jogador, float y_max_jogador, const CollisionLine& line)
+{
+    // 1. Testa o overlap no eixo vertical (Y)
+    if (y_max_jogador < line.y_min || y_min_jogador > line.y_max)
+        return false;
+
+    // 2. Matemática vetorial no plano XZ
+    glm::vec2 ab = line.p2 - line.p1;       // Vetor da parede
+    glm::vec2 ap = pos_xz - line.p1;        // Vetor do início da parede até o jogador
+
+    // Calcula a projeção escalar de AP sobre AB
+    float proj = glm::dot(ap, ab);
+    float ab_len_sq = glm::dot(ab, ab);     // Comprimento da parede ao quadrado
+    
+    // Calcula 't', que é a porcentagem da projeção ao longo da parede
+    float t = proj / ab_len_sq;
+    
+    // Grampeia 't' entre 0 e 1 para garantir que não estamos checando um ponto além da parede
+    t = glm::clamp(t, 0.0f, 1.0f);
+
+    // Encontra a coordenada exata do ponto mais próximo na parede
+    glm::vec2 closest_point = line.p1 + t * ab;
+    
+    // Calcula a distância do jogador até esse ponto
+    glm::vec2 distance_vec = pos_xz - closest_point;
+    
+    // Se a distância ao quadrado for menor que o raio ao quadrado, é colisão!
+    return glm::dot(distance_vec, distance_vec) < (raio * raio);
+}
+
 // Testa se o cilindro do jogador, na posição candidata 'pos' (mesma referência
 // de Pos_Player — não os pés diretamente, ver PLAYER_FEET_Y_OFFSET), colide
 // com alguma AABB do cenário registrada em g_CollisionAABBs.
@@ -1196,9 +1237,16 @@ bool PlayerCollidesAt(const glm::vec3& pos)
     float y_min = feet_y + COLLISION_SKIN;
     float y_max = feet_y + g_PlayerCollider.altura - COLLISION_SKIN;
 
+    // Testa colisões com caixas (código antigo)
     for (const CollisionAABB& box : g_CollisionAABBs)
     {
         if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, box))
+            return true;
+    }
+
+    // Testa colisões com paredes diagonais
+    for (const CollisionLine& line : g_CollisionLines) {
+        if (CylinderIntersectsLine(pos_xz, g_PlayerCollider.raio, y_min, y_max, line))
             return true;
     }
     return false;
@@ -1276,6 +1324,7 @@ CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const g
 void SetupCollisionAABBs()
 {
     g_CollisionAABBs.clear();
+    g_CollisionLines.clear();
 
     // Espessura "fake" usada para dar volume às paredes/chão/teto no teste de colisão
     const float wall_t = 0.1f;
@@ -1357,6 +1406,19 @@ void SetupCollisionAABBs()
     // Botão: mesma matriz "model" usada para desenhá-lo (Matrix_Translate(9,-1,-1) * Matrix_Scale(1.65,1.65,1.65))
     glm::mat4 model_button = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(1.65f, 1.65f, 1.65f);
     g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["portal_button_reduced_2"].bbox_min, g_VirtualScene["portal_button_reduced_2"].bbox_max, model_button));
+
+    // Paredes Diagonais:
+    // Parede diagonal da Sala 2 (Centro: 11.0, -2.7 | Rotação: -45 graus | Escala: 2.0)
+    // Calculamos as extremidades aplicando o seno/cosseno de 45 graus (0.707) * escala (2.0) = 1.414
+    float offsetX = 1.414f;
+    float offsetZ = 1.414f;
+    
+    g_CollisionLines.push_back({
+        glm::vec2(11.0f - offsetX, -2.7f - offsetZ), // Ponto 1 (~ 9.586, -4.114)
+        glm::vec2(11.0f + offsetX, -2.7f + offsetZ), // Ponto 2 (~ 12.414, -1.286)
+        y_min,                                       // Chão (-1.0f)
+        y_max                                        // Teto (3.0f)
+    });
 }
 
 // Função que carrega uma imagem para ser utilizada como textura
