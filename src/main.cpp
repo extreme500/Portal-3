@@ -534,25 +534,33 @@ int main(int argc, char* argv[])
         float desired_dx = 0.0f;
         float desired_dz = 0.0f;
 
+        // Calcula a velocidade do frame: se segurar SHIFT (esquerdo ou direito), corre mais rápido!
+        float velocidade_atual = velocidade;
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+            glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
+        {
+            velocidade_atual = velocidade * 1.6f; // 60% mais rápido ao correr
+        }
+
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         {
-            desired_dx += fwd_x * velocidade * deltaTime;
-            desired_dz += fwd_z * velocidade * deltaTime;
+            desired_dx += fwd_x * velocidade_atual * deltaTime;
+            desired_dz += fwd_z * velocidade_atual * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         {
-            desired_dx -= fwd_x * velocidade * deltaTime;
-            desired_dz -= fwd_z * velocidade * deltaTime;
+            desired_dx -= fwd_x * velocidade_atual * deltaTime;
+            desired_dz -= fwd_z * velocidade_atual * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         {
-            desired_dx -= right_x * velocidade * deltaTime;
-            desired_dz -= right_z * velocidade * deltaTime;
+            desired_dx -= right_x * velocidade_atual * deltaTime;
+            desired_dz -= right_z * velocidade_atual * deltaTime;
         }
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         {
-            desired_dx += right_x * velocidade * deltaTime;
-            desired_dz += right_z * velocidade * deltaTime;
+            desired_dx += right_x * velocidade_atual * deltaTime;
+            desired_dz += right_z * velocidade_atual * deltaTime;
         }
 
         TryMovePlayer(desired_dx, desired_dz);
@@ -618,10 +626,19 @@ int main(int argc, char* argv[])
             if (isMoving)
             {
                 float t = (float)glfwGetTime();
-                // Y sobe e desce uma vez por passada
-                camera_position_c.y += 0.05f * sin(t * 10.0f);
-                // Z avança e recua duas vezes por passada (stride)
-                float bob_z = 0.025f * sin(t * 20.0f);
+                
+                // Se estiver correndo, os passos são mais rápidos
+                float freq_multiplier = 1.0f;
+                if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+                    freq_multiplier = 1.4f;
+                }
+
+                // Y sobe e desce (Reduzimos a amplitude de 0.05 para 0.02 para suavizar)
+                camera_position_c.y += 0.02f * sin(t * 10.0f * freq_multiplier);
+                
+                // Z avança e recua (Reduzimos a amplitude de 0.025 para 0.01)
+                float bob_z = 0.01f * sin(t * 20.0f * freq_multiplier);
+                
                 camera_position_c.x += bob_z * (-sin(g_CameraTheta));
                 camera_position_c.z += bob_z * (-cos(g_CameraTheta));
             }
