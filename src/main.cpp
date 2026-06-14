@@ -50,6 +50,52 @@
 #include "matrices.h"
 #include "bezier.h"
 
+
+// Headers da SoLoud (sfx e músicas)
+#include "soloud.h"
+#include "soloud_wav.h"
+#include "soloud_wavstream.h"
+#include "soloud_queue.h"
+
+// Variável global do motor de áudio
+SoLoud::Soloud g_Soloud;
+
+// Canais de Mixagem (Buses)
+SoLoud::Bus g_BusMusic;
+SoLoud::Bus g_BusSFX;
+
+// Arquivos de voz da GLaDOS
+SoLoud::Wav g_Glados001;
+SoLoud::Wav g_Glados002;
+
+// A Fila que vai organizar a ordem
+SoLoud::Queue g_GladosDialogueQueue;
+
+// Sons da Caixa
+SoLoud::Wav g_SfxBeepIn;
+SoLoud::Wav g_SfxBeepOut;
+
+// Variável para lembrar se estávamos segurando a caixa no frame passado
+bool g_EstavaSegurandoCaixa = false;
+
+// Handles (IDs) das instâncias vivas dos canais
+int g_BusMusicHandle = 0;
+int g_BusSFXHandle = 0;
+
+// Variáveis Globais de Volume (Para a futura UI)
+float g_VolumeGlobal = 1.0f; // Volume Master (0.0 a 1.0)
+float g_VolumeMusic  = 0.1f; // Volume das Músicas
+float g_VolumeSFX    = 0.5f; // Volume dos Efeitos Sonoros
+
+// Controle de Mute
+bool g_IsMusicMuted = false;
+
+// Array com os 4 sons de passos
+SoLoud::Wav g_SfxWalk[4];
+
+// Cronômetro para controlar o intervalo entre os passos
+float g_FootstepTimer = 100.0f; // Começa alto para o 1º passo tocar instantaneamente
+
 // Estrutura que representa um modelo geométrico carregado a partir de um
 // arquivo ".obj". Veja https://en.wikipedia.org/wiki/Wavefront_.obj_file .
 struct ObjModel
@@ -499,6 +545,51 @@ int main(int argc, char* argv[])
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
+    // Inicializa a SoLoud
+    g_Soloud.init(SoLoud::Soloud::CLIP_ROUNDOFF | SoLoud::Soloud::ENABLE_VISUALIZATION);
+
+    // Liga os canais no motor principal E GUARDA O ID DELES!
+    g_BusMusicHandle = g_Soloud.play(g_BusMusic);
+    g_BusSFXHandle   = g_Soloud.play(g_BusSFX);
+
+    // Aplica os volumes iniciais NA INSTÂNCIA VIVA usando o ID
+    g_Soloud.setGlobalVolume(g_VolumeGlobal);
+    g_Soloud.setVolume(g_BusMusicHandle, g_VolumeMusic);
+    g_Soloud.setVolume(g_BusSFXHandle, g_VolumeSFX);
+
+    // Carrega os 4 sons de passo (ajuste o caminho se necessário)
+    g_SfxWalk[0].load("../../data/audio/sfx/Walk1.wav");
+    g_SfxWalk[1].load("../../data/audio/sfx/Walk2.wav");
+    g_SfxWalk[2].load("../../data/audio/sfx/Walk3.wav");
+    g_SfxWalk[3].load("../../data/audio/sfx/Walk4.wav");
+
+    // Carrega os beeps da caixa
+    g_SfxBeepIn.load("../../data/audio/sfx/Beep-in.mp3");
+    g_SfxBeepOut.load("../../data/audio/sfx/Beep-out.mp3");
+
+    // Carrega as músicas 
+    SoLoud::WavStream musicaDeFundo;
+    musicaDeFundo.load("../../data/audio/music/Still_Alive.mp3");
+    musicaDeFundo.setLooping(1); // Faz repetir para sempre
+
+    // Carrega os arquivos
+    g_Glados001.load("../../data/audio/sfx/Glados_001.mp3");
+    g_Glados002.load("../../data/audio/sfx/Glados_002.mp3");
+
+    // Toca a fila inteira no canal de Efeitos Sonoros
+    // (A fila se comporta como se fosse um arquivo de áudio gigante)
+    int gladosHandle = g_BusSFX.play(g_GladosDialogueQueue);
+
+    // Ajusta o volume da Fila inteira (ex: 0.7f para 70% do volume original)
+    g_Soloud.setVolume(gladosHandle, 0.7f);
+
+    // Coloca os arquivos na fila
+    g_GladosDialogueQueue.play(g_Glados001);
+    g_GladosDialogueQueue.play(g_Glados002);
+
+    // Toca a música de fundo
+    int bgmHandle = g_BusMusic.play(musicaDeFundo);
+
     // Inicializamos ultimoFrame aqui para evitar um deltaTime gigante no primeiro
     // frame (o carregamento dos assets leva vários segundos, e ultimoFrame = 0
     // causaria gravidade acumulada suficiente para teleportar o jogador para -∞)
@@ -570,7 +661,28 @@ int main(int argc, char* argv[])
         // quando o jogador está apoiado no chão (sem pulo duplo no ar)
         bool spacePressedNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
         if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround())
+        {
+            // Aplica a força física para cima
             g_PlayerVelocityY = FORCA_PULO;
+
+            if(g_CameraMode == CAMERA_FPS)
+            {
+                // Sorteia qual dos 4 passos vai tocar
+                int randomStep = rand() % 4;
+                
+                // Toca o som no canal de Efeitos Sonoros e "captura" a ID
+                int jumpHandle = g_BusSFX.play(g_SfxWalk[randomStep]);
+                
+                // Aumenta o volume dessa instância em 50% (1.5f) ou até dobrar (2.0f)
+                // Como usamos o Handle, isso afeta SÓ ESSE PULO, não os passos normais!
+                g_Soloud.setVolume(jumpHandle, 0.7f); 
+                
+                // [BÔNUS DE GAME FEEL - Opcional] 
+                // Diminuir a velocidade do áudio em 15% deixa o som mais "grave/pesado",
+                // vendendo a ilusão de que o jogador fez muito mais força nas pernas.
+                g_Soloud.setRelativePlaySpeed(jumpHandle, 0.85f);
+            }
+        }
         g_SpaceWasPressed = spacePressedNow;
 
         // Gravidade: aceleramos a velocidade vertical e tentamos aplicar o
@@ -648,6 +760,40 @@ int main(int argc, char* argv[])
             float vy =  sin(g_CameraPhi);
             float vz = -cos(g_CameraPhi) * cos(g_CameraTheta);
             camera_view_vector = glm::vec4(vx, vy, vz, 0.0f);
+
+            // Sistema de Som de Passos (Footsteps)
+            if (isMoving && IsPlayerOnGround()) 
+            {
+                // Acumula o tempo que passou
+                g_FootstepTimer += deltaTime;
+                
+                // Define o intervalo dependendo se está correndo ou andando
+                // (Um passo a cada 0.45s andando, ou 0.30s correndo)
+                bool isSprinting = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+                                    glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+                
+                float stepInterval = isSprinting ? 0.30f : 0.45f;
+
+                // Se o tempo acumulado passou do intervalo, toca o som!
+                if (g_FootstepTimer >= stepInterval) 
+                {
+                    // Sorteia um número de 0 a 3
+                    int randomStep = rand() % 4;
+                    
+                    // Toca o passo sorteado no canal de Efeitos Sonoros
+                    int stepHandle = g_BusSFX.play(g_SfxWalk[randomStep]);
+                    g_Soloud.setVolume(stepHandle, 0.4f);
+                    
+                    // Reseta o cronômetro para começar a contar o próximo passo
+                    g_FootstepTimer = 0.0f; 
+                }
+            } 
+            else if (!isMoving) 
+            {
+                // Se o jogador parar completamente, deixamos o timer engatilhado.
+                // Assim, quando ele voltar a andar, o primeiro passo soa na mesma hora!
+                g_FootstepTimer = 100.0f; 
+            }
         }
         else // CAMERA_SECURITY
         {
@@ -747,6 +893,18 @@ int main(int argc, char* argv[])
         float field_of_view = 3.141592f / 3.0f; // 60 graus
         glm::mat4 projection = Matrix_Perspective(field_of_view, g_ScreenRatio, nearplane, farplane);
 
+
+        // Atualiza a posição do ouvinte (Jogador) para a máquina de som 3D
+        g_Soloud.set3dListenerParameters(
+            camera_position_c.x, camera_position_c.y, camera_position_c.z, // Onde eu estou
+            camera_view_vector.x, camera_view_vector.y, camera_view_vector.z, // Para onde olho
+            camera_up_vector.x, camera_up_vector.y, camera_up_vector.z // Qual lado é "cima"
+        );
+
+        // Manda a SoLoud recalcular o volume das orelhas baseando-se na nova posição!
+        g_Soloud.update3dAudio();
+
+
         glm::mat4 model = Matrix_Identity(); // Transformação identidade de modelagem
 
         // Enviamos as matrizes "view" e "projection" para a placa de vídeo
@@ -783,8 +941,13 @@ int main(int argc, char* argv[])
         #define DOOR_WALL 24
 
         // Constantes
+        #ifndef M_PI
         #define M_PI   3.14159265358979323846
+        #endif
+
+        #ifndef M_PI_2
         #define M_PI_2 1.57079632679489661923
+        #endif
 
         // Defina uniformes no shader (supondo que você buscou os IDs com glGetUniformLocation)
         // Dentro do loop, perto de onde você envia view e projection:
@@ -887,6 +1050,29 @@ int main(int argc, char* argv[])
                 g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
             }
         }
+
+        // Feedback Sonoro da Caixa (Edge Detection)
+        bool segurandoAgora = g_IsHoldingBox; 
+
+        // DETECÇÃO DE PEGAR (Transição de Falso para Verdadeiro)
+        if (segurandoAgora && !g_EstavaSegurandoCaixa) 
+        {
+            // O jogador ACABOU de pegar a caixa neste exato frame
+            // Toca no Bus, pega a ID e abaixa pra 50%
+            int beepInHandle = g_BusSFX.play(g_SfxBeepIn);
+            g_Soloud.setVolume(beepInHandle, 0.5f);
+        }
+        // DETECÇÃO DE SOLTAR (Transição de Verdadeiro para Falso)
+        else if (!segurandoAgora && g_EstavaSegurandoCaixa) 
+        {
+            // O jogador (ou a física do jogo) ACABOU de soltar a caixa
+            // Toca no Bus, pega a ID e abaixa pra 50%
+            int beepOutHandle = g_BusSFX.play(g_SfxBeepOut);
+            g_Soloud.setVolume(beepOutHandle, 0.5f);
+        }
+
+        // Atualiza a memória para o próximo frame
+        g_EstavaSegurandoCaixa = segurandoAgora;
 
         // Informações de base sobre a CENA
         // O chão dela acontece em -1.0f
@@ -1396,6 +1582,8 @@ int main(int argc, char* argv[])
 
     // Finalizamos o uso dos recursos do sistema operacional
     glfwTerminate();
+
+    g_Soloud.deinit();
 
     // Fim do programa
     return 0;
@@ -2727,6 +2915,22 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         g_ActiveSecurityCamera = (g_ActiveSecurityCamera - 1 + g_TotalSecurityCameras) % g_TotalSecurityCameras;
     }
     
+    // Se o usuário apertar a tecla M, muta/desmuta a música
+    if (key == GLFW_KEY_M && action == GLFW_PRESS)
+    {
+        g_IsMusicMuted = !g_IsMusicMuted;
+        
+        if (g_IsMusicMuted) {
+            // Muta a instância que está tocando!
+            g_Soloud.setVolume(g_BusMusicHandle, 0.0f); 
+        } else {
+            // Restaura o volume para o valor salvo
+            g_Soloud.setVolume(g_BusMusicHandle, g_VolumeMusic); 
+        }
+        
+        fprintf(stdout, "Musica %s\n", g_IsMusicMuted ? "Mutada" : "Desmutada");
+        fflush(stdout);
+    }
 
 }
 

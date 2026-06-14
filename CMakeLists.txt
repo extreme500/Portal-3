@@ -55,9 +55,22 @@ Por favor, atualize a lista de arquivos fonte no arquivo CMakeLists.txt.")
   endif()
 endforeach()
 
+# CONFIGURAÇÃO DA SOLOUD
+# Coleta os arquivos de código da SoLoud direto de onde eles estão originalmente
+file(GLOB SOLOUD_SOURCES 
+  "soloud/src/core/*.cpp"
+  "soloud/src/audiosource/wav/*.cpp"
+  "soloud/src/audiosource/wav/*.c"
+  "soloud/src/backend/miniaudio/*.cpp"
+)
+# Adiciona os arquivos da SoLoud à lista de compilação do seu projeto
+list(APPEND SOURCES ${SOLOUD_SOURCES})
+
 add_executable(${EXECUTABLE_NAME} ${SOURCES})
 
 target_include_directories(${EXECUTABLE_NAME} BEFORE PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(${EXECUTABLE_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/soloud/include)
+target_compile_definitions(${EXECUTABLE_NAME} PRIVATE WITH_MINIAUDIO)
 
 if(WIN32)
 
