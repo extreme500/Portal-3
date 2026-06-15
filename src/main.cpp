@@ -93,8 +93,9 @@ bool g_IsHoldingRadio = false; // Estado de carregar o rádio
 bool g_EstavaBotaoPressionado = false;
 bool g_EstavaPortaAberta = false;
 
-// Variável para lembrar se estávamos segurando a caixa no frame passado
+// Variável para lembrar se estávamos segurando a caixa/rádio no frame passado
 bool g_EstavaSegurandoCaixa = false;
+bool g_EstavaSegurandoRadio = false;
 
 // Handles (IDs) das instâncias vivas dos canais
 int g_BusMusicHandle = 0;
@@ -195,6 +196,7 @@ struct CollisionAABB; // forward declaration (struct definida acima de main())
 bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box);
 bool PlayerCollidesAt(const glm::vec3& pos);
 bool BoxCollidesAt(glm::vec3 pos);
+bool RadioCollidesAt(glm::vec3 pos);
 bool IsButtonTriggered();
 bool IsPlayerOnGround();
 void TryMovePlayer(float dx, float dz);
@@ -1033,26 +1035,48 @@ int main(int argc, char* argv[])
 
         
         // Lógica de Interação com a Caixa (Pegar/Soltar - Física, Gravidade e Raycast)
+        // ----------------------------------------------------------------
+        // Lógica de Interação com Objetos (Caixa e Rádio - Tecla E)
+        // ----------------------------------------------------------------
         bool ePressedNow = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
         
         if (ePressedNow && !g_EWasPressed && g_CameraMode == CAMERA_FPS)
         {
+            // Se já estiver segurando a caixa, solta ela
             if (g_IsHoldingBox) {
-                g_IsHoldingBox = false; // Solta a caixa
-            } else {
-                // Tenta pegar a caixa
-                float dist = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
-                glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
-                float dotProduct = glm::dot(dirToBox, glm::vec3(camera_view_vector));
+                g_IsHoldingBox = false;
+            } 
+            // Se já estiver segurando o rádio, solta ele
+            else if (g_IsHoldingRadio) {
+                g_IsHoldingRadio = false;
+            } 
+            // Se a mão estiver livre, decide qual pegar com base na proximidade e mira (Garante exclusão mútua)
+            else {
+                float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
+                float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
                 
-                if (dist < 2.0f && dotProduct > 0.85f) {
+                glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
+                glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
+                
+                float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
+                float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
+                
+                // Prioriza pegar o objeto que você está olhando mais diretamente (maior Dot Product)
+                if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
                     g_IsHoldingBox = true;
                     g_BoxVelocityY = 0.0f; // Corta a gravidade enquanto segura
+                } 
+                else if (distToRadio < 2.0f && dotRadio > 0.85f && dotRadio > dotBox) {
+                    g_IsHoldingRadio = true;
+                    g_RadioVelocityY = 0.0f; // Corta a gravidade enquanto segura
                 }
             }
         }
         g_EWasPressed = ePressedNow;
 
+        // ================================================================
+        // PROCESSAMENTO DE MOVIMENTO E GRAVIDADE DA CAIXA
+        // ================================================================
         if (g_IsHoldingBox)
         {
             // O jogador está segurando a caixa: o Raycast
@@ -1080,7 +1104,7 @@ int main(int argc, char* argv[])
 
             // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
             // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
-            // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 0.6 unidades,
+            // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 1.0 unidades,
             // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
             float distToPlayer = glm::distance(start, finalPos);
             if (distToPlayer < 1.0f) {
@@ -1096,34 +1120,67 @@ int main(int argc, char* argv[])
             glm::vec3 candidatePos = g_BoxPosition;
             candidatePos.y += g_BoxVelocityY * deltaTime;
 
-            // SISTEMA ANTI-PRISÃO (Caixa bate no jogador e não atravessa)
-            // Criamos a hitbox temporária da caixa no frame exato da queda
-            glm::mat4 candidate_model = Matrix_Translate(candidatePos.x, candidatePos.y, candidatePos.z) 
-                                      * Matrix_Rotate_Y(g_BoxAngleY) 
-                                      * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
-            
-            CollisionAABB candidateAABB = ComputeWorldAABB(
-                g_VirtualScene["Cube"].bbox_min, 
-                g_VirtualScene["Cube"].bbox_max, 
-                candidate_model
-            );
-            
-            // Variáveis do corpo do jogador
-            glm::vec2 pos_xz(Pos_Player.x, Pos_Player.z);
-            float feet_y = Pos_Player.y + PLAYER_FEET_Y_OFFSET;
-            
-            // Em vez de usar a altura do cilindro físico (-0.4), 
-            // usamos a altura da câmera (+0.3) para a caixa bater na sua "cabeça" real!
-            float y_max_player_real = Pos_Player.y + FPS_EYE_HEIGHT; 
-
-            // Testa se a caixa vai encostar no jogador (do pé até a cabeça)
-            bool bateuNoJogador = CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, feet_y, y_max_player_real, candidateAABB);
-
+            // SISTEMA ANTI-PRISÃO (Caixa bate no jogador/cenário e não atravessa)
             // Se essa queda não fizer ela bater no chão ou num objeto, ela cai
             if (!BoxCollidesAt(candidatePos)) {
                 g_BoxPosition.y = candidatePos.y;
             } else {
                 g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
+            }
+        }
+
+        // ================================================================
+        // PROCESSAMENTO DE MOVIMENTO E GRAVIDADE DO RÁDIO
+        // ================================================================
+        if (g_IsHoldingRadio)
+        {
+            // O jogador está segurando o rádio: o Raycast
+            glm::vec3 start = glm::vec3(camera_position_c);
+            start.y -= 0.1f; // Abaixa da linha dos olhos para não cegar o jogador
+            glm::vec3 dir = glm::vec3(camera_view_vector);
+            
+            float max_dist = 1.5f;
+            float step = 0.1f;
+            glm::vec3 finalPos = start;
+
+            // Empurra o rádio aos poucos na direção da visão. 
+            // Se ele bater na parede no caminho, ele para antes de atravessar.
+            for (float d = 0.2f; d <= max_dist; d += step) {
+                glm::vec3 testPos = start + dir * d;
+                if (RadioCollidesAt(testPos)) {
+                    break; // Bateu na parede, usamos a última posição válida (finalPos)
+                }
+                finalPos = testPos;
+            }
+            g_RadioPosition = finalPos;
+            
+            // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
+            g_RadioAngleY = g_CameraTheta;
+
+            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
+            // Se você anda contra a parede, a parede empurra o rádio na direção da câmera.
+            // Se a distância entre a origem do raio (jogador) e o rádio ficar menor que 1.0 unidades,
+            // o jogador solta o rádio automaticamente para evitar que a câmera entre nele.
+            float distToPlayer = glm::distance(start, finalPos);
+            if (distToPlayer < 1.0f) {
+                g_IsHoldingRadio = false;
+            }
+        }
+        else
+        {
+            // O jogador soltou o rádio: Gravidade!
+            g_RadioVelocityY += GRAVIDADE * deltaTime;
+            
+            // Simula onde o rádio vai estar no próximo frame
+            glm::vec3 candidatePos = g_RadioPosition;
+            candidatePos.y += g_RadioVelocityY * deltaTime;
+
+            // SISTEMA ANTI-PRISÃO (Rádio bate no jogador/cenário e não atravessa)
+            // Se essa queda não fizer ele bater no chão ou num objeto, ele cai
+            if (!RadioCollidesAt(candidatePos)) {
+                g_RadioPosition.y = candidatePos.y;
+            } else {
+                g_RadioVelocityY = 0.0f; // Bateu, zera a velocidade de queda
             }
         }
 
@@ -1149,6 +1206,27 @@ int main(int argc, char* argv[])
 
         // Atualiza a memória para o próximo frame
         g_EstavaSegurandoCaixa = segurandoAgora;
+
+        // Feedback Sonoro do Rádio (Edge Detection)
+        bool segurandoRadioAgora = g_IsHoldingRadio; 
+
+        // DETECÇÃO DE PEGAR (Transição de Falso para Verdadeiro)
+        if (segurandoRadioAgora && !g_EstavaSegurandoRadio) 
+        {
+            // O jogador ACABOU de pegar o rádio!
+            int beepInHandle = g_BusSFX.play3d(g_SfxBeepIn, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+            g_Soloud.setVolume(beepInHandle, 0.5f);
+        }
+        // DETECÇÃO DE SOLTAR (Transição de Verdadeiro para Falso)
+        else if (!segurandoRadioAgora && g_EstavaSegurandoRadio) 
+        {
+            // O jogador (ou a gravidade) ACABOU de soltar o rádio!
+            int beepOutHandle = g_BusSFX.play3d(g_SfxBeepOut, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+            g_Soloud.setVolume(beepOutHandle, 0.5f);
+        }
+
+        // Atualiza a memória para o próximo frame
+        g_EstavaSegurandoRadio = segurandoRadioAgora;
 
         // Feedback Sonoro do Botão (Áudio 3D)
         // Variável que diz se tem algo em cima do botão neste exato frame
@@ -1281,7 +1359,7 @@ int main(int argc, char* argv[])
         DrawVirtualObject("portal_door_combined_model_2");
 
         // Desenhamos o rádio 
-        model = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) * Matrix_Scale(1.0/9.0f, 1.0f/9.0, 1.0f/9.0); // Coordenada do radio
+        model = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) * Matrix_Rotate_Y(g_RadioAngleY) * Matrix_Scale(1.0/9.0f, 1.0f/9.0, 1.0f/9.0); // Coordenada do radio
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, RADIO_SHELL);
         DrawVirtualObject("Shell"); // Nome do objeto no .obj
@@ -1894,13 +1972,33 @@ bool BoxCollidesAt(glm::vec3 pos) {
         }
     }
 
+    // Testa colisão dinâmica contra o RÁDIO
+    // Usa os mesmos tamanhos que você configurou no RadioCollidesAt
+    float r_xz = 0.15f; 
+    float r_y  = 0.22f; 
+    glm::vec3 min_radio = g_RadioPosition + glm::vec3(-r_xz, -r_y, -r_xz);
+    glm::vec3 max_radio = g_RadioPosition + glm::vec3(r_xz, r_y, r_xz);
+
+    // Se a AABB da caixa sobrepor a AABB do rádio, é colisão!
+    if (max_box.x > min_radio.x && min_box.x < max_radio.x &&
+        max_box.y > min_radio.y && min_box.y < max_radio.y &&
+        max_box.z > min_radio.z && min_box.z < max_radio.z) 
+    {
+        return true;
+    }
+
     return false;
 }
 
 bool RadioCollidesAt(glm::vec3 pos) {
-    float s = 0.2f; // O rádio é levemente menor que a caixa, diminuímos a margem da hitbox
-    glm::vec3 min_radio = pos + glm::vec3(-s, -s, -s);
-    glm::vec3 max_radio = pos + glm::vec3(s, s, s);
+    float s_xz = 0.15f; // Largura do rádio
+    
+    // É esta variável 's_y' que você deve diminuir se ele ainda estiver flutuando, 
+    // ou aumentar se ele estiver afundando no chão!
+    float s_y = 0.03f;  
+
+    glm::vec3 min_radio = pos + glm::vec3(-s_xz, -s_y, -s_xz);
+    glm::vec3 max_radio = pos + glm::vec3(s_xz, s_y, s_xz);
 
     for (const CollisionAABB& aabb : g_CollisionAABBs) {
         if (max_radio.x > aabb.min.x && min_radio.x < aabb.max.x &&
@@ -1912,7 +2010,7 @@ bool RadioCollidesAt(glm::vec3 pos) {
     }
     glm::vec2 pos_xz(pos.x, pos.z);
     for (const CollisionLine& line : g_CollisionLines) {
-        if (CylinderIntersectsLine(pos_xz, s, min_radio.y, max_radio.y, line)) {
+        if (CylinderIntersectsLine(pos_xz, s_xz, min_radio.y, max_radio.y, line)) {
             return true;
         }
     }
@@ -1924,6 +2022,21 @@ bool RadioCollidesAt(glm::vec3 pos) {
             return true;
         }
     }
+
+    // Testa colisão dinâmica contra a CAIXA
+    // Usa o tamanho simplificado (0.25f) que você configurou no BoxCollidesAt
+    float b_s = 0.25f; 
+    glm::vec3 min_box = g_BoxPosition + glm::vec3(-b_s, -b_s, -b_s);
+    glm::vec3 max_box = g_BoxPosition + glm::vec3(b_s, b_s, b_s);
+
+    // Se a AABB do rádio sobrepor a AABB da caixa, é colisão!
+    if (max_radio.x > min_box.x && min_radio.x < max_box.x &&
+        max_radio.y > min_box.y && min_radio.y < max_box.y &&
+        max_radio.z > min_box.z && min_radio.z < max_box.z) 
+    {
+        return true;
+    }
+
     return false;
 }
 
@@ -2189,6 +2302,14 @@ void ResetScene()
     g_BoxAngleY = 0.0f;
     g_IsHoldingBox = false;
     g_EWasPressed = false;
+    g_EstavaSegurandoCaixa = false;
+
+    // 2.5 Reset do Rádio
+    g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f); // Lembrar de mudar quando for colocar ele na posição inicial real/correta (dentro do vidro)
+    g_RadioVelocityY = 0.0f;
+    g_RadioAngleY = 0.0f;
+    g_IsHoldingRadio = false;
+    g_EstavaSegurandoRadio = false;
 
     // 3. Reset do Cenário
     g_IsButtonPressed = false;
@@ -3074,6 +3195,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         if (g_CameraMode == CAMERA_FPS)
         {
             g_IsHoldingBox = false;
+            g_IsHoldingRadio = false;
             g_CameraMode = CAMERA_SECURITY;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
