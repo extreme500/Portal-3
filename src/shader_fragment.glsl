@@ -49,6 +49,15 @@ uniform int flashlight_on;
 #define WALL_4 22
 #define SEC_CAM 23
 #define DOOR_WALL 24
+#define RADIO_SHELL 25
+#define RADIO_MAIN 26
+#define RADIO_GRID 27
+#define RADIO_SCREEN 28
+#define RADIO_LIGHT 29
+#define RADIO_ANTENNA 30
+#define RADIO_BUTTON 31
+#define RADIO_BUTTON_RIFLED 32
+#define RADIO_BASE_PART 33
 
 uniform int object_id;
 
@@ -79,6 +88,16 @@ uniform sampler2D TextureImage18;
 uniform sampler2D TextureImage19;
 uniform sampler2D TextureImage20;
 uniform sampler2D TextureImage21;
+uniform sampler2D TextureImage22;
+uniform sampler2D TextureImage23;
+uniform sampler2D TextureImage24;
+uniform sampler2D TextureImage25;
+uniform sampler2D TextureImage26;
+uniform sampler2D TextureImage27;
+uniform sampler2D TextureImage28;
+uniform sampler2D TextureImage29;
+uniform sampler2D TextureImage30;
+uniform sampler2D TextureImage31;
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -174,6 +193,10 @@ void main()
 
     // Fator de refletância especular (o quanto o objeto brilha)
     float Ks_map = 0.0;
+
+    // Variáveis locais para controlar os nossos "hacks" de PBR
+    vec3 emissive_color = vec3(0.0);
+    float metalness = 0.0; // 0.0 = dielétrico (plástico/tinta), 1.0 = metal puro
 
     if ( object_id == WALL)
     {
@@ -433,6 +456,55 @@ void main()
         // Substitui a normal 'n' que seria usada na iluminação
         n = vec4(true_normal, 0.0);
     }
+    else if ( object_id == RADIO_SHELL) 
+    {
+        Kd0 = texture(TextureImage22, vec2(U,V)).rgb;
+    }
+    else if ( object_id == RADIO_MAIN)
+    {
+        Kd0 = texture(TextureImage23, vec2(U,V)).rgb;
+        // LÊ A TEXTURA ZERO! Pegamos o canal vermelho (r) pois a imagem é em preto e branco.
+        metalness = texture(TextureImage0, vec2(U,V)).r;
+    }
+    else if ( object_id == RADIO_GRID)
+    {
+        Kd0 = texture(TextureImage24, vec2(U,V)).rgb;
+        metalness = 1.0; // Como não temos textura pra grade, forçamos 100% metal
+    }
+    else if ( object_id == RADIO_SCREEN) 
+    {
+        Kd0 = texture(TextureImage25, vec2(U,V)).rgb;
+
+        // Pega a textura Emissiva
+        // Multiplica por 2.0 para fazer a telinha brilhar no escuro!
+        emissive_color = texture(TextureImage31, vec2(U,V)).rgb * 2.0;
+    }
+    else if ( object_id == RADIO_LIGHT) 
+    {
+        Kd0 = texture(TextureImage26, vec2(U,V)).rgb;
+        
+        // Em vez de gastar o canal 32 com a imagem "Light_Emissive", nós simplesmente
+        // usamos a própria cor base (Kd0) como luz e multiplicamos por um fator!
+        emissive_color = Kd0 * 3.0;
+    }
+    else if ( object_id == RADIO_ANTENNA) 
+    {
+        Kd0 = texture(TextureImage27, vec2(U,V)).rgb;
+        metalness = 1.0; // Força 100% metal
+    }
+    else if ( object_id == RADIO_BUTTON)
+    {
+        Kd0 = texture(TextureImage28, vec2(U,V)).rgb;
+    }
+    else if ( object_id == RADIO_BUTTON_RIFLED)
+    {
+        Kd0 = texture(TextureImage29, vec2(U,V)).rgb;
+        metalness = 1.0; // Força 100% metal
+    }
+    else if ( object_id == RADIO_BASE_PART)
+    {
+        Kd0 = texture(TextureImage30, vec2(U,V)).rgb;
+    }
 
 
   // --- CÁLCULO DAS LUZES DO TETO ---
@@ -459,8 +531,24 @@ void main()
         // Termo Especular (Blinn-Phong)
         vec3 h = normalize(v.xyz + l);
         float n_dot_h = max(0.0, dot(n.xyz, h));
-        float specular_intensity = pow(n_dot_h, 32.0); 
-        vec3 specular = vec3(1.0) * LIGHT_COLORS[i] * specular_intensity * Ks_map;
+        float shininess = mix(32.0, 64.0, metalness); 
+        float specular_intensity = pow(n_dot_h, shininess);
+
+        // O metal pinta o reflexo com a cor da própria textura (Kd0)
+        vec3 base_specular_color = mix(vec3(1.0), Kd0, metalness);
+        
+        // O metal brilha mais forte com as luzes
+        float metal_boost = mix(1.0, 3.0, metalness);
+
+        float current_ks = Ks_map;
+        // Se for uma peça do rádio e não tiver Ks_map definido, damos um brilho base de 0.3
+        if (object_id >= RADIO_SHELL && object_id <= RADIO_BASE_PART && Ks_map == 0.0) {
+            current_ks = 0.3; 
+        }
+
+        vec3 specular = base_specular_color * LIGHT_COLORS[i] * specular_intensity * current_ks * metal_boost;
+
+        // vec3 specular = vec3(1.0) * LIGHT_COLORS[i] * specular_intensity * Ks_map; // Antigo
 
         // Somamos a contribuição dessa luz com a atenuação aplicada
         total_diffuse += diffuse * attenuation;
@@ -497,7 +585,7 @@ void main()
     }
 
     //  Cor final do fragmento somada com a luz da lanterna no final
-    color.rgb = ambient_light + total_diffuse + total_specular + final_flashlight;
+    color.rgb = ambient_light + total_diffuse + total_specular + final_flashlight + emissive_color;
 
     // NOTE: Se você quiser fazer o rendering de objetos transparentes, é
     // necessário:

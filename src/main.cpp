@@ -75,6 +75,24 @@ SoLoud::Queue g_GladosDialogueQueue;
 SoLoud::Wav g_SfxBeepIn;
 SoLoud::Wav g_SfxBeepOut;
 
+// Efeitos Sonoros 3D do Cenário
+SoLoud::Wav g_SfxButton;
+SoLoud::Wav g_SfxButtonUp;
+SoLoud::Wav g_SfxDoor;
+SoLoud::Wav g_SfxDoorClose;
+
+// Controle do Rádio estilo Portal
+glm::vec3 g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f); // Posição inicial do modelo
+SoLoud::WavStream g_RadioMusic;                            // Stream para músicas longas
+int g_RadioMusicHandle = 0;                                // ID da instância tocando
+float g_RadioVelocityY = 0.0f; // Controla a gravidade do rádio
+float g_RadioAngleY = 0.0f;    // Controla a rotação para encarar o jogador
+bool g_IsHoldingRadio = false; // Estado de carregar o rádio
+
+// Rastreadores de Estado (Edge Detection)
+bool g_EstavaBotaoPressionado = false;
+bool g_EstavaPortaAberta = false;
+
 // Variável para lembrar se estávamos segurando a caixa no frame passado
 bool g_EstavaSegurandoCaixa = false;
 
@@ -453,8 +471,8 @@ int main(int argc, char* argv[])
     //
     LoadShadersFromFiles();
 
-    // Carregamos duas imagens para serem utilizadas como textura
-    LoadTextureImage("../../data/red_brick_diff_1k.jpg",true);      // TextureImage0
+    // Carregamos imagens para serem utilizadas como textura
+    LoadTextureImage("../../data/radio/textures/Radio_Metallic.png", false); // TextureImage0
     LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png",true); // TextureImage1
     LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png",false);      // TextureImage2
     LoadTextureImage("../../data/chell/textures/eyeball_l.png",false);      // TextureImage3
@@ -476,6 +494,18 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/ceiling/portal_ceiling.png",true);      // TextureImage19
     LoadTextureImage("../../data/sec_camera/textures/security_camera.png",true);      // TextureImage20
     LoadTextureImage("../../data/sec_camera/textures/internal_ground_ao_texture.jpeg",true);      // TextureImage21
+    // Texturas do Rádio
+    LoadTextureImage("../../data/radio/textures/Shell_Base_Color.png", false);        // TextureImage22
+    LoadTextureImage("../../data/radio/textures/Radio_Base_Color.png", false);        // TextureImage23
+    LoadTextureImage("../../data/radio/textures/Radio_Grid_Base_Color.png", false);   // TextureImage24
+    LoadTextureImage("../../data/radio/textures/Radio_Screen_Base_Color.png", false); // TextureImage25
+    LoadTextureImage("../../data/radio/textures/Light_Base_Color.png", false);        // TextureImage26
+    LoadTextureImage("../../data/radio/textures/Antenna_Base_Color.png", false);      // TextureImage27
+    LoadTextureImage("../../data/radio/textures/Button_Base_Color.png", false);       // TextureImage28
+    LoadTextureImage("../../data/radio/textures/Button_Rifled_Base_Color.png", false);// TextureImage29
+    LoadTextureImage("../../data/radio/textures/Base_Base_Color.png", false);         // TextureImage30
+    LoadTextureImage("../../data/radio/textures/Radio_Screen_Emissive.png", false); // TextureImage31
+
 
 
     // Construímos a representação de objetos geométricos através de malhas de triângulos
@@ -518,6 +548,10 @@ int main(int argc, char* argv[])
     ObjModel securitycamera("../../data/sec_camera/source/Sec_camera.obj");
     ComputeNormals(&securitycamera);
     BuildTrianglesAndAddToVirtualScene(&securitycamera);
+
+    ObjModel radio("../../data/radio/source/radio.obj");
+    ComputeNormals(&radio);
+    BuildTrianglesAndAddToVirtualScene(&radio);
 
 
     if ( argc > 1 )
@@ -567,10 +601,30 @@ int main(int argc, char* argv[])
     g_SfxBeepIn.load("../../data/audio/sfx/Beep-in.mp3");
     g_SfxBeepOut.load("../../data/audio/sfx/Beep-out.mp3");
 
+    // Carrega os sons de pressionar o botão e abrir a porta
+    g_SfxButton.load("../../data/audio/sfx/Ground_Button.mp3");
+    g_SfxButtonUp.load("../../data/audio/sfx/Ground_ButtonUp.mp3");
+    g_SfxDoor.load("../../data/audio/sfx/Door_Open.mp3");
+    g_SfxDoorClose.load("../../data/audio/sfx/Door_Close.mp3");
+
     // Carrega as músicas 
     SoLoud::WavStream musicaDeFundo;
-    musicaDeFundo.load("../../data/audio/music/Still_Alive.mp3");
+    musicaDeFundo.load("../../data/audio/music/Ambiente.mp3");
     musicaDeFundo.setLooping(1); // Faz repetir para sempre
+
+    // Carrega a música do rádio (ajuste o nome do arquivo se necessário)
+    g_RadioMusic.load("../../data/audio/music/Radio.mp3"); 
+    g_RadioMusic.setLooping(true); // Faz a música do rádio rodar em loop infinito
+
+    // Configura a atenuação linear para o som sumir se o jogador se afastar
+    g_RadioMusic.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_RadioMusic.set3dMinMaxDistance(1.0f, 4.0f); // O som zera completamente a 10 unidades de distância
+
+    // Inicia o áudio 3D dentro do canal de músicas (g_BusMusic) na posição inicial do rádio
+    g_RadioMusicHandle = g_BusMusic.play3d(g_RadioMusic, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+    
+    // Define o volume inicial dele bem baixinho para ficar de fundo ambiente
+    g_Soloud.setVolume(g_RadioMusicHandle, 0.6f);
 
     // Carrega os arquivos
     g_Glados001.load("../../data/audio/sfx/Glados_001.mp3");
@@ -589,6 +643,19 @@ int main(int argc, char* argv[])
 
     // Toca a música de fundo
     int bgmHandle = g_BusMusic.play(musicaDeFundo);
+
+    // CONFIGURAÇÃO DE ATENUAÇÃO 3D (VOLUME A DISTÂNCIA)
+    // O parâmetro LINEAR_DISTANCE força o volume a cair até 0% no MaxDistance.
+    // O segundo parâmetro (1.0f) é o fator de rolloff (caída padrão).
+    
+    g_SfxButton.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxButton.set3dMinMaxDistance(1.0f, 10.0f);
+    g_SfxButtonUp.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxButtonUp.set3dMinMaxDistance(1.0f, 10.0f);
+    g_SfxDoor.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxDoor.set3dMinMaxDistance(1.0f, 10.0f);
+    g_SfxDoorClose.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxDoorClose.set3dMinMaxDistance(1.0f, 10.0f);
 
     // Inicializamos ultimoFrame aqui para evitar um deltaTime gigante no primeiro
     // frame (o carregamento dos assets leva vários segundos, e ultimoFrame = 0
@@ -677,7 +744,7 @@ int main(int argc, char* argv[])
                 // Como usamos o Handle, isso afeta SÓ ESSE PULO, não os passos normais!
                 g_Soloud.setVolume(jumpHandle, 0.7f); 
                 
-                // [BÔNUS DE GAME FEEL - Opcional] 
+                // [BÔNUS DE GAME FEEL] 
                 // Diminuir a velocidade do áudio em 15% deixa o som mais "grave/pesado",
                 // vendendo a ilusão de que o jogador fez muito mais força nas pernas.
                 g_Soloud.setRelativePlaySpeed(jumpHandle, 0.85f);
@@ -939,6 +1006,15 @@ int main(int argc, char* argv[])
         #define WALL_4 22
         #define SEC_CAM 23
         #define DOOR_WALL 24
+        #define RADIO_SHELL 25
+        #define RADIO_MAIN 26
+        #define RADIO_GRID 27
+        #define RADIO_SCREEN 28
+        #define RADIO_LIGHT 29
+        #define RADIO_ANTENNA 30
+        #define RADIO_BUTTON 31
+        #define RADIO_BUTTON_RIFLED 32
+        #define RADIO_BASE_PART 33
 
         // Constantes
         #ifndef M_PI
@@ -1074,6 +1150,43 @@ int main(int argc, char* argv[])
         // Atualiza a memória para o próximo frame
         g_EstavaSegurandoCaixa = segurandoAgora;
 
+        // Feedback Sonoro do Botão (Áudio 3D)
+        // Variável que diz se tem algo em cima do botão neste exato frame
+        bool botaoPressionadoAgora = g_IsButtonPressed; 
+        
+        if (botaoPressionadoAgora && !g_EstavaBotaoPressionado) 
+        {
+            // O botão acabou de ser afundado! Toca o som na posição XYZ dele.
+            g_BusSFX.play3d(g_SfxButton, 9.0f, -1.0f, -1.0f);
+        } 
+        else if (!botaoPressionadoAgora && g_EstavaBotaoPressionado) 
+        {
+            // O botão acabou de ser solto e subiu!
+            g_BusSFX.play3d(g_SfxButtonUp, 9.0f, -1.0f, -1.0f);
+        }
+        // Atualiza a memória
+        g_EstavaBotaoPressionado = botaoPressionadoAgora;
+
+
+        // Feedback Sonoro da Porta (Áudio 3D)
+        bool portaAbertaAgora = g_IsButtonPressed; 
+        
+        if (portaAbertaAgora && !g_EstavaPortaAberta) 
+        {
+            // A porta acabou de ser destrancada! Toca o som na posição XYZ dela.
+            g_BusSFX.play3d(g_SfxDoor, 8.0f, -1.0f, 6.1f);
+        }
+        else if (!portaAbertaAgora && g_EstavaPortaAberta) 
+        {
+            // A porta acabou de ser destrancada! Toca o som na posição XYZ dela.
+            g_BusSFX.play3d(g_SfxDoorClose, 8.0f, -1.0f, 6.1f);
+        }
+        // Atualiza a memória
+        g_EstavaPortaAberta = portaAbertaAgora;
+
+        // Atualiza a posição tridimensional do áudio do rádio com base na variável global
+        g_Soloud.set3dSourcePosition(g_RadioMusicHandle, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+
         // Informações de base sobre a CENA
         // O chão dela acontece em -1.0f
         // O teto dela acontece em +3.0f
@@ -1081,6 +1194,7 @@ int main(int argc, char* argv[])
         // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
         // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
 
+        //Renderização do Personagem do Jogador
         model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, PLAYER_HEAD);
@@ -1165,6 +1279,29 @@ int main(int argc, char* argv[])
         glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
         glUniform1i(g_object_id_uniform, DOOR);
         DrawVirtualObject("portal_door_combined_model_2");
+
+        // Desenhamos o rádio 
+        model = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) * Matrix_Scale(1.0/9.0f, 1.0f/9.0, 1.0f/9.0); // Coordenada do radio
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, RADIO_SHELL);
+        DrawVirtualObject("Shell"); // Nome do objeto no .obj
+        glUniform1i(g_object_id_uniform, RADIO_MAIN);
+        DrawVirtualObject("Radio"); // Nome após separar no Blender
+        glUniform1i(g_object_id_uniform, RADIO_GRID);
+        DrawVirtualObject("Radio.001"); // Nome após separar no Blender
+        glUniform1i(g_object_id_uniform, RADIO_SCREEN);
+        DrawVirtualObject("Radio.002"); // Nome após separar no Blender
+        glUniform1i(g_object_id_uniform, RADIO_LIGHT);
+        DrawVirtualObject("Light_Indicator");
+        DrawVirtualObject("Light.001"); // Desenha ambas as luzes com a mesma textura
+        glUniform1i(g_object_id_uniform, RADIO_ANTENNA);
+        DrawVirtualObject("Antenna");
+        glUniform1i(g_object_id_uniform, RADIO_BUTTON);
+        DrawVirtualObject("Button"); // Nome após separar no Blender
+        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("Button.001"); // Nome após separar no Blender
+        glUniform1i(g_object_id_uniform, RADIO_BASE_PART);
+        DrawVirtualObject("Base");
 
         // Desenhamos a câmera que segue o jogador/curva de Bézier (1R)
         // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
@@ -1699,6 +1836,25 @@ bool PlayerCollidesAt(const glm::vec3& pos)
             return true;    
     }
 
+    // Testa colisão dinâmica com o RÁDIO
+    if (!g_IsHoldingRadio) 
+    {
+        // Matriz do rádio baseada em sua escala visual (1/9)
+        glm::mat4 model_radio = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) 
+                              * Matrix_Rotate_Y(g_RadioAngleY) 
+                              * Matrix_Scale(1.0f/9.0f, 1.0f/9.0f, 1.0f/9.0f);
+    
+        // Calcula a AABB usando as bounding boxes locais carregadas pelo tinyobj (usando a malha "Shell" como referência)
+        CollisionAABB radioAABB = ComputeWorldAABB(
+            g_VirtualScene["Shell"].bbox_min, 
+            g_VirtualScene["Shell"].bbox_max, 
+            model_radio
+        );
+        
+        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, radioAABB))
+            return true;    
+    }
+
     return false;
 }
 
@@ -1738,6 +1894,36 @@ bool BoxCollidesAt(glm::vec3 pos) {
         }
     }
 
+    return false;
+}
+
+bool RadioCollidesAt(glm::vec3 pos) {
+    float s = 0.2f; // O rádio é levemente menor que a caixa, diminuímos a margem da hitbox
+    glm::vec3 min_radio = pos + glm::vec3(-s, -s, -s);
+    glm::vec3 max_radio = pos + glm::vec3(s, s, s);
+
+    for (const CollisionAABB& aabb : g_CollisionAABBs) {
+        if (max_radio.x > aabb.min.x && min_radio.x < aabb.max.x &&
+            max_radio.y > aabb.min.y && min_radio.y < aabb.max.y &&
+            max_radio.z > aabb.min.z && min_radio.z < aabb.max.z) 
+        {
+            return true;
+        }
+    }
+    glm::vec2 pos_xz(pos.x, pos.z);
+    for (const CollisionLine& line : g_CollisionLines) {
+        if (CylinderIntersectsLine(pos_xz, s, min_radio.y, max_radio.y, line)) {
+            return true;
+        }
+    }
+    if (!g_IsButtonPressed) {
+        if (max_radio.x > g_ClosedDoorAABB.min.x && min_radio.x < g_ClosedDoorAABB.max.x &&
+            max_radio.y > g_ClosedDoorAABB.min.y && min_radio.y < g_ClosedDoorAABB.max.y &&
+            max_radio.z > g_ClosedDoorAABB.min.z && min_radio.z < g_ClosedDoorAABB.max.z) 
+        {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -2185,6 +2371,16 @@ void LoadShadersFromFiles()
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage19"), 19);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage20"), 20);
     glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage21"), 21);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage22"), 22);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage23"), 23);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage24"), 24);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage25"), 25);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage26"), 26);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage27"), 27);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage28"), 28);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage29"), 29);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage30"), 30);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage31"), 31);
     glUseProgram(0);
 }
 

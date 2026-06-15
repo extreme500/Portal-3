@@ -31,6 +31,9 @@ Modelo da porta de saída
 
 Modelo da câmera de segurança
 * https://sketchfab.com/3d-models/portal-security-camera-c144c9c55c28489b83b37eebfa558abc 
+
+Modelo do rádio
+* https://sketchfab.com/3d-models/portal-radio-9896a03c4dbf4cb78c31ffcf1d850ece 
   
 Video de gameplay 
 * https://www.youtube.com/watch?v=KZDJNJeTYQI 
