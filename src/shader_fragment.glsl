@@ -66,6 +66,10 @@ uniform int flashlight_on;
 
 uniform int object_id;
 
+// Passo de renderização do portal: 0 = stencil + cor (descarta fora da elipse),
+// 1 = moldura (descarta dentro da elipse, mantém a borda).
+uniform int portalPass;
+
 // Parâmetros da axis-aligned bounding box (AABB) do modelo
 uniform vec4 bbox_min;
 uniform vec4 bbox_max;
@@ -148,6 +152,10 @@ const vec3 LIGHT_COLORS[LIGHT_COUNT] = vec3[](
 #define M_PI   3.14159265358979323846
 #define M_PI_2 1.57079632679489661923
 
+// object_id para portais
+#define PORTAL_BLUE   90
+#define PORTAL_ORANGE 91
+
 void main()
 {
     // Obtemos a posição da câmera utilizando a inversa da matriz que define o
@@ -186,7 +194,42 @@ void main()
     vec3 emissive_color = vec3(0.0);
     float metalness = 0.0; // 0.0 = dielétrico (plástico/tinta), 1.0 = metal puro
 
-    if ( object_id == WALL)
+    // Máscara elíptica para portais: recorta o quad "the_plane" em forma oval.
+    // position_model está em coordenadas locais do modelo (the_plane tem vértices
+    // em [-1,1] no plano XZ). Fragmentos dentro da elipse (inclinação < 1) são
+    // mantidos no passe de stencil (portalPass==0); no passe de moldura
+    // (portalPass==1) invertemos, mantendo só a borda externa.
+    // Limiares da máscara elíptica do portal:
+    //   INNER — dentro = cena virtual; fora = moldura ou descarte (stencil).
+    //   OUTER — só usado no passe de moldura: descarta fragmentos além da
+    //           borda externa da elipse, para o portal não ser um retângulo.
+    const float PORTAL_INNER = 0.85;
+    const float PORTAL_OUTER = 1.0;
+
+    if (object_id == PORTAL_BLUE || object_id == PORTAL_ORANGE)
+    {
+        vec2 p_local = position_model.xz; // the_plane é XZ (Y é a normal)
+        float d = dot(p_local, p_local);
+        if (portalPass == 0) {
+            // Stencil / cor → descarta fora da elipse (mantém interior).
+            if (d > PORTAL_INNER) discard;
+        } else {
+            // Moldura → mantém só o anel entre INNER e OUTER.
+            if (d <= PORTAL_INNER || d > PORTAL_OUTER) discard;
+        }
+    }
+
+    if (object_id == PORTAL_BLUE)
+    {
+        Kd0 = vec3(0.0, 0.4, 0.9);
+        emissive_color = vec3(0.0, 0.6, 1.0) * 0.6;
+    }
+    else if (object_id == PORTAL_ORANGE)
+    {
+        Kd0 = vec3(1.0, 0.5, 0.0);
+        emissive_color = vec3(1.0, 0.7, 0.0) * 0.6;
+    }
+    else if ( object_id == WALL)
     {
         // Coordenadas de textura do plano, obtidas do arquivo OBJ.
         // Multiplicamos por um fator (ex: 1.0). Quanto maior o número, mais ela se repete.

@@ -48,6 +48,7 @@
 // Headers locais, definidos na pasta "include/"
 #include "utils.h"
 #include "matrices.h"
+#include "portal.h"
 #include "bezier.h"
 
 
@@ -86,6 +87,7 @@ glm::vec3 g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f); // Posição inicial d
 SoLoud::WavStream g_RadioMusic;                            // Stream para músicas longas
 int g_RadioMusicHandle = 0;                                // ID da instância tocando
 float g_RadioVelocityY = 0.0f; // Controla a gravidade do rádio
+glm::vec3 g_RadioVel = glm::vec3(0.0f); // momento horizontal (xz) carregado por portais
 float g_RadioAngleY = 0.0f;    // Controla a rotação para encarar o jogador
 bool g_IsHoldingRadio = false; // Estado de carregar o rádio
 
@@ -323,6 +325,8 @@ GLint g_model_uniform;
 GLint g_view_uniform;
 GLint g_projection_uniform;
 GLint g_object_id_uniform;
+GLint g_portal_pass_uniform; // 0 = stencil/cor, 1 = moldura
+GLint g_clipplane_uniform; // plano de recorte oblíquo (portais)
 GLint g_bbox_min_uniform;
 GLint g_bbox_max_uniform;
 
@@ -351,6 +355,7 @@ float velocidade = 3; // Velocidade do personagem para andar
 // Controle da Caixa estilo Portal
 glm::vec3 g_BoxPosition = glm::vec3(11.0f, .0f, 5.0f);
 float g_BoxVelocityY = 0.0f; // Controla a gravidade da caixa
+glm::vec3 g_BoxVel = glm::vec3(0.0f); // momento horizontal (xz) carregado por portais
 float g_BoxAngleY = 0.0f;    // Controla a rotação para ela "encarar" o jogador
 bool g_IsHoldingBox = false;
 bool g_EWasPressed = false;
@@ -383,6 +388,7 @@ const float COLLISION_SKIN = 0.02f;
 const float GRAVIDADE  = -9.8f; // aceleração da gravidade, em unidades/s²
 const float FORCA_PULO =  4.5f; // velocidade vertical inicial ao pular, em unidades/s
 float g_PlayerVelocityY = 0.0f; // velocidade vertical atual do jogador
+glm::vec3 g_PlayerPortalVel = glm::vec3(0.0f); // momento horizontal (xz) ao sair de um portal
 bool  g_SpaceWasPressed = false; // estado da tecla espaço no frame anterior (detecção de borda de subida, evita pulo contínuo ao segurar a tecla)
 
 // Caixa delimitadora axis-aligned em coordenadas de mundo, usada nos testes
@@ -433,616 +439,8 @@ const float SECURITY_CAM_SWEEP_PERIOD = 14.0f;
 // Última posição conhecida do cursor (usada para calcular deltas de movimento)
 double g_LastCursorPosX, g_LastCursorPosY;
 
-int main(int argc, char* argv[])
-{
-    // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do
-    // sistema operacional, onde poderemos renderizar com OpenGL.
-    int success = glfwInit();
-    if (!success)
-    {
-        fprintf(stderr, "ERROR: glfwInit() failed.\n");
-        std::exit(EXIT_FAILURE);
-    }
-
-    // Definimos o callback para impressão de erros da GLFW no terminal
-    glfwSetErrorCallback(ErrorCallback);
-
-    // Pedimos para utilizar OpenGL versão 3.3 (ou superior)
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-
-    #ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    #endif
-
-    // Pedimos para utilizar o perfil "core", isto é, utilizaremos somente as
-    // funções modernas de OpenGL.
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    /* // Criamos uma janela do sistema operacional, com 800 colunas e 600 linhas
-    // de pixels, e com título "INF01047 ...".
-    GLFWwindow* window;
-    window = glfwCreateWindow(800, 600, "Portal 3", NULL, NULL);
-    if (!window)
-    {
-        glfwTerminate();
-        fprintf(stderr, "ERROR: glfwCreateWindow() failed.\n");
-        std::exit(EXIT_FAILURE);
-    } */
-
-    // Pega o monitor principal do usuário
-    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
-    
-    // Pega as especificações de vídeo (Resolução e Taxa de Atualização) desse monitor
-    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
-
-    // Damos algumas dicas para o GLFW respeitar as cores e os Hertz do monitor (Opcional, mas recomendado)
-    glfwWindowHint(GLFW_RED_BITS, mode->redBits);
-    glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
-    glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
-    glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
-
-    // Criamos a janela em Tela Cheia passando a resolução nativa e o ponteiro do monitor
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Portal 3", primaryMonitor, NULL);
-    
-    if (!window)
-    {
-        glfwTerminate();
-        fprintf(stderr, "ERROR: glfwCreateWindow() failed.\n");
-        std::exit(EXIT_FAILURE);
-    }
-
-    // Definimos a função de callback que será chamada sempre que o usuário
-    // pressionar alguma tecla do teclado ...
-    glfwSetKeyCallback(window, KeyCallback);
-    // ... ou clicar os botões do mouse ...
-    glfwSetMouseButtonCallback(window, MouseButtonCallback);
-    // ... ou movimentar o cursor do mouse em cima da janela ...
-    glfwSetCursorPosCallback(window, CursorPosCallback);
-    // ... ou rolar a "rodinha" do mouse.
-    glfwSetScrollCallback(window, ScrollCallback);
-
-    // Indicamos que as chamadas OpenGL deverão renderizar nesta janela
-    glfwMakeContextCurrent(window);
-
-    // Carregamento de todas funções definidas por OpenGL 3.3, utilizando a
-    // biblioteca GLAD.
-    gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
-
-    // Definimos a função de callback que será chamada sempre que a janela for
-    // redimensionada, por consequência alterando o tamanho do "framebuffer"
-    // (região de memória onde são armazenados os pixels da imagem).
-    glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-    //FramebufferSizeCallback(window, 800, 600); // Forçamos a chamada do callback acima, para definir g_ScreenRatio.
-    // Pegamos o tamanho REAL do Framebuffer em pixels (Ignorando a escala do Windows/Mac)
-    int fb_width, fb_height;
-    glfwGetFramebufferSize(window, &fb_width, &fb_height);
-    
-    // Forçamos a chamada inicial com os pixels exatos do seu monitor!
-    FramebufferSizeCallback(window, fb_width, fb_height);
-
-    // Imprimimos no terminal informações sobre a GPU do sistema
-    const GLubyte *vendor      = glGetString(GL_VENDOR);
-    const GLubyte *renderer    = glGetString(GL_RENDERER);
-    const GLubyte *glversion   = glGetString(GL_VERSION);
-    const GLubyte *glslversion = glGetString(GL_SHADING_LANGUAGE_VERSION);
-
-    printf("GPU: %s, %s, OpenGL %s, GLSL %s\n", vendor, renderer, glversion, glslversion);
-
-    // Carregamos os shaders de vértices e de fragmentos que serão utilizados
-    // para renderização. Veja slides 180-200 do documento Aula_03_Rendering_Pipeline_Grafico.pdf.
-    //
-    LoadShadersFromFiles();
-
-    // Carregamos imagens para serem utilizadas como textura
-    LoadTextureImage("../../data/radio/textures/Radio_Metallic.png", false); // TextureImage0
-    LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png",true); // TextureImage1
-    LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png",false);      // TextureImage2
-    LoadTextureImage("../../data/chell/textures/eyeball_l.png",false);      // TextureImage3
-    LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png",false);      // TextureImage4
-    LoadTextureImage("../../data/chell/textures/chell_legs_diffuse.png",false);      // TextureImage5
-    LoadTextureImage("../../data/chell/textures/chell_hair.png",false);      // TextureImage6
-    LoadTextureImage("../../data/cube/textures/apertureTexture.jpg",false);      // TextureImage7
-    LoadTextureImage("../../data/cube/textures/dirt.jpg",false);      // TextureImage8
-    LoadTextureImage("../../data/cube/textures/dirtMain2.jpg",false);      // TextureImage9
-    LoadTextureImage("../../data/cube/textures/normal.jpg",false);      // TextureImage10
-    LoadTextureImage("../../data/cube/textures/specular.jpg",false);      // TextureImage11
-    LoadTextureImage("../../data/cube/textures/SpecularMap.png",false);      // TextureImage12
-    LoadTextureImage("../../data/cake/cake.png",false);      // TextureImage13
-    LoadTextureImage("../../data/button/textures/portal_button_blue.jpeg",false);      // TextureImage14
-    LoadTextureImage("../../data/cake/candle.png",false);      // TextureImage15
-    LoadTextureImage("../../data/door/textures/portal_door_02_E_upscayl_2x_ultramix-balan.png",false);      // TextureImage16
-    LoadTextureImage("../../data/door/textures/portal_door_02_upscayl_8x_ultramix-balance.png",false);      // TextureImage17
-    LoadTextureImage("../../data/floor/metallic_floor.jpg",true);      // TextureImage18
-    LoadTextureImage("../../data/ceiling/portal_ceiling.png",true);      // TextureImage19
-    LoadTextureImage("../../data/sec_camera/textures/security_camera.png",true);      // TextureImage20
-    LoadTextureImage("../../data/sec_camera/textures/internal_ground_ao_texture.jpeg",true);      // TextureImage21
-    // Texturas do Rádio
-    LoadTextureImage("../../data/radio/textures/Shell_Base_Color.png", false);        // TextureImage22
-    LoadTextureImage("../../data/radio/textures/Radio_Base_Color.png", false);        // TextureImage23
-    LoadTextureImage("../../data/radio/textures/Radio_Grid_Base_Color.png", false);   // TextureImage24
-    LoadTextureImage("../../data/radio/textures/Radio_Screen_Base_Color.png", false); // TextureImage25
-    LoadTextureImage("../../data/radio/textures/Light_Base_Color.png", false);        // TextureImage26
-    LoadTextureImage("../../data/radio/textures/Antenna_Base_Color.png", false);      // TextureImage27
-    LoadTextureImage("../../data/radio/textures/Button_Base_Color.png", false);       // TextureImage28
-    LoadTextureImage("../../data/radio/textures/Button_Rifled_Base_Color.png", false);// TextureImage29
-    LoadTextureImage("../../data/radio/textures/Base_Base_Color.png", false);         // TextureImage30
-    LoadTextureImage("../../data/radio/textures/Radio_Screen_Emissive.png", false); // TextureImage31
-
-
-
-    // Construímos a representação de objetos geométricos através de malhas de triângulos
-    ObjModel spheremodel("../../data/sphere.obj");
-    ComputeNormals(&spheremodel);
-    BuildTrianglesAndAddToVirtualScene(&spheremodel);
-
-    ObjModel bunnymodel("../../data/bunny.obj");
-    ComputeNormals(&bunnymodel);
-    BuildTrianglesAndAddToVirtualScene(&bunnymodel);
-
-    ObjModel planemodel("../../data/plane.obj");
-    ComputeNormals(&planemodel);
-    BuildTrianglesAndAddToVirtualScene(&planemodel);
-
-    ObjModel playermodel("../../data/chell/source/Chell.obj");
-    ComputeNormals(&playermodel);
-    BuildTrianglesAndAddToVirtualScene(&playermodel);
-     
-    ObjModel portalcube("../../data/cube/source/cube.obj");
-    ComputeNormals(&portalcube);
-    BuildTrianglesAndAddToVirtualScene(&portalcube);
-
-    ObjModel portalbutton("../../data/button/source/Button.obj");
-    ComputeNormals(&portalbutton);
-    BuildTrianglesAndAddToVirtualScene(&portalbutton);
-
-    ObjModel portaldoor("../../data/door/source/Door.obj");
-    ComputeNormals(&portaldoor);
-    BuildTrianglesAndAddToVirtualScene(&portaldoor);
-    
-    ObjModel portalopendoor("../../data/door/source/OpenDoor.obj");
-    ComputeNormals(&portalopendoor);
-    BuildTrianglesAndAddToVirtualScene(&portalopendoor);
-
-    ObjModel doorwall("../../data/door_wall/door_wall.obj");
-    ComputeNormals(&doorwall);
-    BuildTrianglesAndAddToVirtualScene(&doorwall);
-
-    ObjModel securitycamera("../../data/sec_camera/source/Sec_camera.obj");
-    ComputeNormals(&securitycamera);
-    BuildTrianglesAndAddToVirtualScene(&securitycamera);
-
-    ObjModel radio("../../data/radio/source/radio.obj");
-    ComputeNormals(&radio);
-    BuildTrianglesAndAddToVirtualScene(&radio);
-
-    ObjModel cake("../../data/cake/cake.obj");
-    ComputeNormals(&cake);
-    BuildTrianglesAndAddToVirtualScene(&cake);
-
-
-    if ( argc > 1 )
-    {
-        ObjModel model(argv[1]);
-        BuildTrianglesAndAddToVirtualScene(&model);
-    }
-
-    // Construímos as AABBs de colisão do cenário (paredes, chão, teto, cubo,
-    // botão), uma única vez, já que a geometria estática não muda em runtime.
-    SetupCollisionAABBs();
-
-    // Inicializamos o código para renderização de texto.
-    TextRendering_Init();
-
-    // Câmera começa com cursor visível (menu)
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
-
-    // Habilitamos o Z-buffer. Veja slides 104-116 do documento Aula_09_Projecoes.pdf.
-    glEnable(GL_DEPTH_TEST);
-
-    // Habilitamos o Backface Culling. Veja slides 8-13 do documento Aula_02_Fundamentos_Matematicos.pdf, slides 23-34 do documento Aula_13_Clipping_and_Culling.pdf e slides 112-123 do documento Aula_14_Laboratorio_3_Revisao.pdf.
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
-
-    // Inicializa a SoLoud
-    g_Soloud.init(SoLoud::Soloud::CLIP_ROUNDOFF | SoLoud::Soloud::ENABLE_VISUALIZATION);
-
-    // Liga os canais no motor principal E GUARDA O ID DELES!
-    g_BusMusicHandle = g_Soloud.play(g_BusMusic);
-    g_BusSFXHandle   = g_Soloud.play(g_BusSFX);
-    g_Soloud.setPause(g_BusSFXHandle, 1);
-
-    // Aplica os volumes iniciais NA INSTÂNCIA VIVA usando o ID
-    g_Soloud.setGlobalVolume(g_VolumeGlobal);
-    g_Soloud.setVolume(g_BusMusicHandle, g_VolumeMusic);
-    g_Soloud.setVolume(g_BusSFXHandle, g_VolumeSFX);
-
-    // Carrega os 4 sons de passo (ajuste o caminho se necessário)
-    g_SfxWalk[0].load("../../data/audio/sfx/Walk1.wav");
-    g_SfxWalk[1].load("../../data/audio/sfx/Walk2.wav");
-    g_SfxWalk[2].load("../../data/audio/sfx/Walk3.wav");
-    g_SfxWalk[3].load("../../data/audio/sfx/Walk4.wav");
-
-    // Carrega os beeps da caixa
-    g_SfxBeepIn.load("../../data/audio/sfx/Beep-in.mp3");
-    g_SfxBeepOut.load("../../data/audio/sfx/Beep-out.mp3");
-
-    // Carrega os sons de pressionar o botão e abrir a porta
-    g_SfxButton.load("../../data/audio/sfx/Ground_Button.mp3");
-    g_SfxButtonUp.load("../../data/audio/sfx/Ground_ButtonUp.mp3");
-    g_SfxDoor.load("../../data/audio/sfx/Door_Open.mp3");
-    g_SfxDoorClose.load("../../data/audio/sfx/Door_Close.mp3");
-
-    // Carrega as músicas 
-    SoLoud::WavStream musicaDeFundo;
-    musicaDeFundo.load("../../data/audio/music/Ambiente.mp3");
-    musicaDeFundo.setLooping(1); // Faz repetir para sempre
-
-    g_MusicStillAlive.load("../../data/audio/music/Still_Alive.mp3");
-
-    g_MusicWantYouGone.load("../../data/audio/music/Want_You_Gone.mp3");
-
-    // Carrega a música do rádio (ajuste o nome do arquivo se necessário)
-    g_RadioMusic.load("../../data/audio/music/Radio.mp3"); 
-    g_RadioMusic.setLooping(true); // Faz a música do rádio rodar em loop infinito
-
-    // Configura a atenuação linear para o som sumir se o jogador se afastar
-    g_RadioMusic.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
-    g_RadioMusic.set3dMinMaxDistance(1.0f, 4.0f); // O som zera completamente a 10 unidades de distância
-
-    // Inicia o áudio 3D dentro do canal de músicas (g_BusMusic) na posição inicial do rádio
-    g_RadioMusicHandle = g_BusSFX.play3d(g_RadioMusic, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
-    
-    // Define o volume inicial dele bem baixinho para ficar de fundo ambiente
-    g_Soloud.setVolume(g_RadioMusicHandle, 0.2f);
-
-    // Carrega os arquivos
-    g_Glados001.load("../../data/audio/sfx/Glados_001.mp3");
-    g_Glados002.load("../../data/audio/sfx/Glados_002.mp3");
-
-
-
-    // Toca a música de fundo
-    g_BGMHandle = g_BusMusic.play(musicaDeFundo);
-
-    // CONFIGURAÇÃO DE ATENUAÇÃO 3D (VOLUME A DISTÂNCIA)
-    // O parâmetro LINEAR_DISTANCE força o volume a cair até 0% no MaxDistance.
-    // O segundo parâmetro (1.0f) é o fator de rolloff (caída padrão).
-    
-    g_SfxButton.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
-    g_SfxButton.set3dMinMaxDistance(1.0f, 10.0f);
-    g_SfxButtonUp.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
-    g_SfxButtonUp.set3dMinMaxDistance(1.0f, 10.0f);
-    g_SfxDoor.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
-    g_SfxDoor.set3dMinMaxDistance(1.0f, 10.0f);
-    g_SfxDoorClose.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
-    g_SfxDoorClose.set3dMinMaxDistance(1.0f, 10.0f);
-
-    // Inicializamos ultimoFrame aqui para evitar um deltaTime gigante no primeiro
-    // frame (o carregamento dos assets leva vários segundos, e ultimoFrame = 0
-    // causaria gravidade acumulada suficiente para teleportar o jogador para -∞)
-    ultimoFrame = (float)glfwGetTime();
-
-    // Ficamos em um loop infinito, renderizando, até que o usuário feche a janela
-    while (!glfwWindowShouldClose(window))
-    {
-        // Aqui executamos as operações de renderização
-
-        // Cálculos de tempo
-        float atualFrame = (float)glfwGetTime();
-        deltaTime = atualFrame - ultimoFrame;
-        ultimoFrame = atualFrame;
-
-        // Limitador de Delta Time (Anti-Tunneling) ---
-        // Se o frame demorar mais de 0.05 segundos (menos de 20 FPS) devido a 
-        // arrastar a janela ou lag, nós travamos o tempo para a física não explodir.
-        if (deltaTime > 0.05f) 
-        {
-            deltaTime = 0.05f;
-        }
-
-        // Movimento do jogador relativo à direção da câmera FPS
-        float fwd_x = -sin(g_CameraTheta);
-        float fwd_z = -cos(g_CameraTheta);
-        float right_x =  cos(g_CameraTheta);
-        float right_z = -sin(g_CameraTheta);
-
-        // Acumulamos o deslocamento desejado neste frame e só então tentamos
-        // aplicá-lo, verificando colisão eixo a eixo (TryMovePlayer faz o
-        // jogador "deslizar" ao longo de paredes em vez de travar nelas).
-        float desired_dx = 0.0f;
-        float desired_dz = 0.0f;
-
-        // Calcula a velocidade do frame: se segurar SHIFT (esquerdo ou direito), corre mais rápido!
-        float velocidade_atual = velocidade;
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
-            glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
-        {
-            velocidade_atual = velocidade * 1.6f; // 60% mais rápido ao correr
-        }
-
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS && g_GameStarted)
-        {
-            desired_dx += fwd_x * velocidade_atual * deltaTime;
-            desired_dz += fwd_z * velocidade_atual * deltaTime;
-        }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS && g_GameStarted)
-        {
-            desired_dx -= fwd_x * velocidade_atual * deltaTime;
-            desired_dz -= fwd_z * velocidade_atual * deltaTime;
-        }
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS && g_GameStarted)
-        {
-            desired_dx -= right_x * velocidade_atual * deltaTime;
-            desired_dz -= right_z * velocidade_atual * deltaTime;
-        }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS && g_GameStarted)
-        {
-            desired_dx += right_x * velocidade_atual * deltaTime;
-            desired_dz += right_z * velocidade_atual * deltaTime;
-        }
-
-        TryMovePlayer(desired_dx, desired_dz);
-
-        // Pulo: detectamos a borda de subida da tecla espaço (o instante em que
-        // ela é pressionada, não enquanto fica segurada) e só permitimos pular
-        // quando o jogador está apoiado no chão (sem pulo duplo no ar)
-        bool spacePressedNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround() && g_GameStarted)
-        {
-            // Aplica a força física para cima
-            g_PlayerVelocityY = FORCA_PULO;
-
-            if(g_CameraMode == CAMERA_FPS)
-            {
-                // Sorteia qual dos 4 passos vai tocar
-                int randomStep = rand() % 4;
-                
-                // Toca o som no canal de Efeitos Sonoros e "captura" a ID
-                int jumpHandle = g_BusSFX.play(g_SfxWalk[randomStep]);
-                
-                // Aumenta o volume dessa instância em 50% (1.5f) ou até dobrar (2.0f)
-                // Como usamos o Handle, isso afeta SÓ ESSE PULO, não os passos normais!
-                g_Soloud.setVolume(jumpHandle, 0.7f); 
-                
-                // [BÔNUS DE GAME FEEL] 
-                // Diminuir a velocidade do áudio em 15% deixa o som mais "grave/pesado",
-                // vendendo a ilusão de que o jogador fez muito mais força nas pernas.
-                g_Soloud.setRelativePlaySpeed(jumpHandle, 0.85f);
-            }
-        }
-        g_SpaceWasPressed = spacePressedNow;
-
-        // Gravidade: aceleramos a velocidade vertical e tentamos aplicar o
-        // deslocamento resultante; colisões com chão/teto zeram a velocidade
-        g_PlayerVelocityY += GRAVIDADE * deltaTime;
-        TryMovePlayerVertical(g_PlayerVelocityY * deltaTime);
-
-
-        // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
-        // definida como coeficientes RGBA: Red, Green, Blue, Alpha; isto é:
-        // Vermelho, Verde, Azul, Alpha (valor de transparência).
-        // Conversaremos sobre sistemas de cores nas aulas de Modelos de Iluminação.
-        //
-        //           R     G     B     A
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-        // "Pintamos" todos os pixels do framebuffer com a cor definida acima,
-        // e também resetamos todos os pixels do Z-buffer (depth buffer).
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // Pedimos para a GPU utilizar o programa de GPU criado acima (contendo
-        // os shaders de vértice e fragmentos).
-        glUseProgram(g_GpuProgramID);
-
-        // Câmera FPS: posição na cabeça do jogador, direção controlada pelo mouse
-        // Câmera de segurança: posição fixa no canto superior, lookat animado por Bézier cúbica
-        glm::vec4 camera_position_c;
-        glm::vec4 camera_view_vector;
-        glm::vec4 camera_up_vector = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
-
-        if (g_CameraMode == CAMERA_FPS)
-        {
-            // Distância que a câmera deve ficar à frente do centro do modelo
-            float camera_offset_forward = 0.1f;
-
-            // Vetor de direção "frente" no plano horizontal (ignorando inclinação da cabeça)
-            float dir_x = -sin(g_CameraTheta);
-            float dir_z = -cos(g_CameraTheta);
-
-            // Cabeça do jogador + deslocamento (offset) na direção que ele está olhando
-            camera_position_c = Pos_Player + glm::vec4(
-                camera_offset_forward * dir_x, 
-                FPS_EYE_HEIGHT, 
-                camera_offset_forward * dir_z, 
-                0.0f
-            );
-            
-            // Bob de câmera ao caminhar: oscilação em Y e Z (eixo de profundidade da câmera)
-            bool isMoving = (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS
-                         || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS
-                         || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS
-                         || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS);
-            if (isMoving)
-            {
-                float t = (float)glfwGetTime();
-                
-                // Se estiver correndo, os passos são mais rápidos
-                float freq_multiplier = 1.0f;
-                if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
-                    freq_multiplier = 1.4f;
-                }
-
-                // Y sobe e desce (Reduzimos a amplitude de 0.05 para 0.02 para suavizar)
-                camera_position_c.y += 0.02f * sin(t * 10.0f * freq_multiplier);
-                
-                // Z avança e recua (Reduzimos a amplitude de 0.025 para 0.01)
-                float bob_z = 0.01f * sin(t * 20.0f * freq_multiplier);
-                
-                camera_position_c.x += bob_z * (-sin(g_CameraTheta));
-                camera_position_c.z += bob_z * (-cos(g_CameraTheta));
-            }
-
-            // Direção: vetor em coordenadas esféricas controlado pelo mouse
-            float vx = -cos(g_CameraPhi) * sin(g_CameraTheta);
-            float vy =  sin(g_CameraPhi);
-            float vz = -cos(g_CameraPhi) * cos(g_CameraTheta);
-            camera_view_vector = glm::vec4(vx, vy, vz, 0.0f);
-
-            // Sistema de Som de Passos (Footsteps)
-            if (isMoving && IsPlayerOnGround()) 
-            {
-                // Acumula o tempo que passou
-                g_FootstepTimer += deltaTime;
-                
-                // Define o intervalo dependendo se está correndo ou andando
-                // (Um passo a cada 0.45s andando, ou 0.30s correndo)
-                bool isSprinting = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
-                                    glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
-                
-                float stepInterval = isSprinting ? 0.30f : 0.45f;
-
-                // Se o tempo acumulado passou do intervalo, toca o som!
-                if (g_FootstepTimer >= stepInterval) 
-                {
-                    // Sorteia um número de 0 a 3
-                    int randomStep = rand() % 4;
-                    
-                    // Toca o passo sorteado no canal de Efeitos Sonoros
-                    int stepHandle = g_BusSFX.play(g_SfxWalk[randomStep]);
-                    g_Soloud.setVolume(stepHandle, 0.4f);
-                    
-                    // Reseta o cronômetro para começar a contar o próximo passo
-                    g_FootstepTimer = 0.0f; 
-                }
-            } 
-            else if (!isMoving) 
-            {
-                // Se o jogador parar completamente, deixamos o timer engatilhado.
-                // Assim, quando ele voltar a andar, o primeiro passo soa na mesma hora!
-                g_FootstepTimer = 100.0f; 
-            }
-        }
-        else // CAMERA_SECURITY
-        {
-            // Define a posição base dependendo de qual câmera está ativa
-            if (g_ActiveSecurityCamera == 0) {
-                camera_position_c = glm::vec4(-3.8f, 2.8f, -3.8f, 1.0f); // Sala 1
-            } else {
-                camera_position_c = glm::vec4(8.0f, 2.8f, 5.8f, 1.0f);   // Sala 2
-            }
-
-            // Define a direção da visão com base no modo (mov_sec_camera)
-            if (mov_sec_camera == 1) 
-            {
-                // --- MODO 1: Seguir o Jogador (LookAt) ---
-                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
-                
-                // Aplica o sistema anti-parede apenas para a câmera 0 (para não atravessar a parede)
-                if (g_ActiveSecurityCamera == 0) {
-                    float dist_x = std::abs(target_player.x - camera_position_c.x);
-                    float dist_z = std::abs(target_player.z - camera_position_c.z);
-                    float dist = std::max(dist_x, dist_z);
-                    float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
-                    float limite_parede = glm::mix(-1.3f, -2.8f, t);
-                    
-                    if (target_player.x < limite_parede) target_player.x = limite_parede;
-                    if (target_player.z < limite_parede) target_player.z = limite_parede;
-                }
-
-                // O vetor de visão global é do alvo até a câmera
-                glm::vec3 dir = target_player - glm::vec3(camera_position_c);
-                camera_view_vector = glm::vec4(dir.x, dir.y, dir.z, 0.0f);
-            }
-            else
-            {
-                // --- MODO 2: Varredura Automática (Bézier) ---
-                // O cálculo de tempo é o mesmo para todas as câmeras
-                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
-                float ping = raw < 1.0f ? raw : 2.0f - raw;
-                int   seg  = (int)(ping * 3.0f);
-                if (seg > 2) seg = 2;
-                float local_t = ping * 3.0f - (float)seg;
-                if (local_t > 1.0f) local_t = 1.0f;
-                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
-                
-                if (g_ActiveSecurityCamera == 0) 
-                {
-                    // --- CÂMERA 0: Sala 1 ---
-
-                    const glm::vec4 wp[4] = {
-                        glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
-                        glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
-                        glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
-                        glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
-                    };
-
-                    glm::vec4 from = wp[seg];
-                    glm::vec4 to   = wp[seg + 1];
-                    glm::vec4 lookat_target = BezierCubic(
-                        from, from + (to - from) * (1.0f / 3.0f), from + (to - from) * (2.0f / 3.0f), to, smooth_t
-                    );
-                    camera_view_vector = lookat_target - camera_position_c;
-                }
-                else if (g_ActiveSecurityCamera == 1)
-                {
-                    // --- CÂMERA 1: Sala 2 (Em cima da porta olhando pra frente) ---
-
-                    // Sala 2 vai de X: 4.2 a 12, Z: -4 a 6. A porta aberta está em (8, y, 6).
-                const glm::vec4 wp[4] = {
-                        glm::vec4( 4.5f,  1.0f,  2.0f, 1.0f), // 0: Perto Esquerda
-                        glm::vec4(11.5f,  1.0f, -3.5f, 1.0f), // 1: Longe Direita
-                        glm::vec4( 4.5f, -0.8f, -3.5f, 1.0f), // 2: Longe Esquerda
-                        glm::vec4(11.5f, -0.8f,  2.0f, 1.0f), // 3: Perto Direita
-                    };
-
-                    glm::vec4 from = wp[seg];
-                    glm::vec4 to   = wp[seg + 1];
-                    glm::vec4 lookat_target = BezierCubic(
-                        from, from + (to - from) * (1.0f / 3.0f), from + (to - from) * (2.0f / 3.0f), to, smooth_t
-                    );
-                    camera_view_vector = lookat_target - camera_position_c;
-                }
-            }
-        }
-
-        // Garantir que position_c é ponto (w=1) e view_vector é vetor (w=0),
-        // pois dotproduct() em matrices.h rejeita pontos com exit()
-        camera_position_c.w = 1.0f;
-        camera_view_vector.w = 0.0f;
-
-        // Computamos a matriz "View"
-        glm::mat4 view = Matrix_Camera_View(camera_position_c, camera_view_vector, camera_up_vector);
-
-        // Agora computamos a matriz de Projeção.
-        // Computamos a matriz de Projeção (Sempre Perspectiva)
-        float nearplane = -0.1f;  
-        float farplane  = -20.0f; 
-        float field_of_view = 3.141592f / 3.0f; // 60 graus
-        glm::mat4 projection = Matrix_Perspective(field_of_view, g_ScreenRatio, nearplane, farplane);
-
-
-        // Atualiza a posição do ouvinte (Jogador) para a máquina de som 3D
-        g_Soloud.set3dListenerParameters(
-            camera_position_c.x, camera_position_c.y, camera_position_c.z, // Onde eu estou
-            camera_view_vector.x, camera_view_vector.y, camera_view_vector.z, // Para onde olho
-            camera_up_vector.x, camera_up_vector.y, camera_up_vector.z // Qual lado é "cima"
-        );
-
-        // Manda a SoLoud recalcular o volume das orelhas baseando-se na nova posição!
-        g_Soloud.update3dAudio();
-
-
-        glm::mat4 model = Matrix_Identity(); // Transformação identidade de modelagem
-
-        // Enviamos as matrizes "view" e "projection" para a placa de vídeo
-        // (GPU). Veja o arquivo "shader_vertex.glsl", onde estas são
-        // efetivamente aplicadas em todos os pontos.
-        glUniformMatrix4fv(g_view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
-        glUniformMatrix4fv(g_projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
-
+// object_id e constantes geométricas (movidos para escopo de arquivo para
+// que DrawScene(), definida acima de main(), também os enxergue).
         // Constantes
         #define SPHERE 0
         #define BUNNY  1
@@ -1093,270 +491,17 @@ int main(int argc, char* argv[])
         #define M_PI_2 1.57079632679489661923
         #endif
 
-        // Defina uniformes no shader (supondo que você buscou os IDs com glGetUniformLocation)
-        // Dentro do loop, perto de onde você envia view e projection:
-        glUniform4fv(g_flashlight_pos_uniform, 1, glm::value_ptr(camera_position_c));
-        glUniform4fv(g_flashlight_dir_uniform, 1, glm::value_ptr(camera_view_vector));
-        glUniform1i(g_flashlight_on_uniform, (int)g_FlashlightEnabled);
+// Câmera atualmente sendo renderizada (real ou virtual de um portal).
+// Usada por billboards como o modelo da câmera de segurança.
+glm::vec4 g_RenderCameraViewVector = glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
 
-        
-        // Lógica de Interação com a Caixa (Pegar/Soltar - Física, Gravidade e Raycast)
-        // ----------------------------------------------------------------
-        // Lógica de Interação com Objetos (Caixa e Rádio - Tecla E)
-        // ----------------------------------------------------------------
-        bool ePressedNow = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
-        
-        if (ePressedNow && !g_EWasPressed && g_CameraMode == CAMERA_FPS)
-        {
-            // Se já estiver segurando a caixa, solta ela
-            if (g_IsHoldingBox) {
-                g_IsHoldingBox = false;
-            } 
-            // Se já estiver segurando o rádio, solta ele
-            else if (g_IsHoldingRadio) {
-                g_IsHoldingRadio = false;
-            } 
-            // Se a mão estiver livre, decide qual pegar com base na proximidade e mira (Garante exclusão mútua)
-            else {
-                // Posição aproximada do bolo que configuramos no cenário (X: 8.0, Y: -0.2, Z: 8.15)
-                glm::vec3 cakePos = glm::vec3(8.0f, -0.2f, 8.15f);
-                float distToCake = glm::distance(glm::vec3(Pos_Player), cakePos);
-                glm::vec3 dirToCake = glm::normalize(cakePos - glm::vec3(Pos_Player));
-                float dotCake = glm::dot(dirToCake, glm::vec3(camera_view_vector));
-
-                // CHECA A VITÓRIA (O BOLO) PRIMEIRO
-                if (distToCake < 2.5f && dotCake > 0.85f && !g_GameWon) {
-                    g_GameWon = true; // Venceu o jogo!
-                    
-                    // Pausa todo o som do jogo e toca a música tema final!
-                    g_Soloud.setPause(g_BGMHandle, 1);
-                    g_Soloud.setPause(g_BusSFXHandle, 1);
-                    g_Soloud.stop(g_GladosHandle); // Caso a GLaDOS ainda esteja falando
-                    
-                    g_WinMusicHandle = g_BusMusic.play(g_MusicStillAlive);
-                    g_Soloud.setVolume(g_WinMusicHandle, 1.0f);
-                }
-                // CHECA OS OBJETOS FÍSICOS SE NÃO GANHOU
-                else {
-                    float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
-                    float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
-                    
-                    glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
-                    glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
-                    
-                    float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
-                    float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
-                    
-                    if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
-                        g_IsHoldingBox = true;
-                        g_BoxVelocityY = 0.0f;
-                    } 
-                    else if (distToRadio < 2.0f && dotRadio > 0.85f && dotRadio > dotBox) {
-                        g_IsHoldingRadio = true;
-                        g_RadioVelocityY = 0.0f;
-                    }
-                }
-            }
-        }
-        g_EWasPressed = ePressedNow;
-
-        // ================================================================
-        // PROCESSAMENTO DE MOVIMENTO E GRAVIDADE DA CAIXA
-        // ================================================================
-        if (g_IsHoldingBox)
-        {
-            // O jogador está segurando a caixa: o Raycast
-            glm::vec3 start = glm::vec3(camera_position_c);
-            start.y -= 0.1f; // Abaixa da linha dos olhos para não cegar o jogador
-            glm::vec3 dir = glm::vec3(camera_view_vector);
-            
-            float max_dist = 1.5f;
-            float step = 0.1f;
-            glm::vec3 finalPos = start;
-
-            // Empurra a caixa aos poucos na direção da visão. 
-            // Se ela bater na parede no caminho, ela para antes de atravessar.
-            for (float d = 0.2f; d <= max_dist; d += step) {
-                glm::vec3 testPos = start + dir * d;
-                if (BoxCollidesAt(testPos)) {
-                    break; // Bateu na parede, usamos a última posição válida (finalPos)
-                }
-                finalPos = testPos;
-            }
-            g_BoxPosition = finalPos;
-            
-            // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
-            g_BoxAngleY = g_CameraTheta;
-
-            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
-            // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
-            // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 1.0 unidades,
-            // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
-            float distToPlayer = glm::distance(start, finalPos);
-            if (distToPlayer < 1.0f) {
-                g_IsHoldingBox = false;
-            }
-        }
-        else
-        {
-            // O jogador soltou a caixa: Gravidade!
-            g_BoxVelocityY += GRAVIDADE * deltaTime;
-            
-            // Simula onde a caixa vai estar no próximo frame
-            glm::vec3 candidatePos = g_BoxPosition;
-            candidatePos.y += g_BoxVelocityY * deltaTime;
-
-            // SISTEMA ANTI-PRISÃO (Caixa bate no jogador/cenário e não atravessa)
-            // Se essa queda não fizer ela bater no chão ou num objeto, ela cai
-            if (!BoxCollidesAt(candidatePos)) {
-                g_BoxPosition.y = candidatePos.y;
-            } else {
-                g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
-            }
-        }
-
-        // ================================================================
-        // PROCESSAMENTO DE MOVIMENTO E GRAVIDADE DO RÁDIO
-        // ================================================================
-        if (g_IsHoldingRadio)
-        {
-            // O jogador está segurando o rádio: o Raycast
-            glm::vec3 start = glm::vec3(camera_position_c);
-            start.y -= 0.1f; // Abaixa da linha dos olhos para não cegar o jogador
-            glm::vec3 dir = glm::vec3(camera_view_vector);
-            
-            float max_dist = 1.5f;
-            float step = 0.1f;
-            glm::vec3 finalPos = start;
-
-            // Empurra o rádio aos poucos na direção da visão. 
-            // Se ele bater na parede no caminho, ele para antes de atravessar.
-            for (float d = 0.2f; d <= max_dist; d += step) {
-                glm::vec3 testPos = start + dir * d;
-                if (RadioCollidesAt(testPos)) {
-                    break; // Bateu na parede, usamos a última posição válida (finalPos)
-                }
-                finalPos = testPos;
-            }
-            g_RadioPosition = finalPos;
-            
-            // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
-            g_RadioAngleY = g_CameraTheta;
-
-            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
-            // Se você anda contra a parede, a parede empurra o rádio na direção da câmera.
-            // Se a distância entre a origem do raio (jogador) e o rádio ficar menor que 1.0 unidades,
-            // o jogador solta o rádio automaticamente para evitar que a câmera entre nele.
-            float distToPlayer = glm::distance(start, finalPos);
-            if (distToPlayer < 1.0f) {
-                g_IsHoldingRadio = false;
-            }
-        }
-        else
-        {
-            // O jogador soltou o rádio: Gravidade!
-            g_RadioVelocityY += GRAVIDADE * deltaTime;
-            
-            // Simula onde o rádio vai estar no próximo frame
-            glm::vec3 candidatePos = g_RadioPosition;
-            candidatePos.y += g_RadioVelocityY * deltaTime;
-
-            // SISTEMA ANTI-PRISÃO (Rádio bate no jogador/cenário e não atravessa)
-            // Se essa queda não fizer ele bater no chão ou num objeto, ele cai
-            if (!RadioCollidesAt(candidatePos)) {
-                g_RadioPosition.y = candidatePos.y;
-            } else {
-                g_RadioVelocityY = 0.0f; // Bateu, zera a velocidade de queda
-            }
-        }
-
-        // Feedback Sonoro da Caixa (Edge Detection)
-        bool segurandoAgora = g_IsHoldingBox; 
-
-        // DETECÇÃO DE PEGAR (Transição de Falso para Verdadeiro)
-        if (segurandoAgora && !g_EstavaSegurandoCaixa) 
-        {
-            // O jogador ACABOU de pegar a caixa neste exato frame
-            // Toca no Bus, pega a ID e abaixa pra 50%
-            int beepInHandle = g_BusSFX.play(g_SfxBeepIn);
-            g_Soloud.setVolume(beepInHandle, 0.5f);
-        }
-        // DETECÇÃO DE SOLTAR (Transição de Verdadeiro para Falso)
-        else if (!segurandoAgora && g_EstavaSegurandoCaixa) 
-        {
-            // O jogador (ou a física do jogo) ACABOU de soltar a caixa
-            // Toca no Bus, pega a ID e abaixa pra 50%
-            int beepOutHandle = g_BusSFX.play(g_SfxBeepOut);
-            g_Soloud.setVolume(beepOutHandle, 0.5f);
-        }
-
-        // Atualiza a memória para o próximo frame
-        g_EstavaSegurandoCaixa = segurandoAgora;
-
-        // Feedback Sonoro do Rádio (Edge Detection)
-        bool segurandoRadioAgora = g_IsHoldingRadio; 
-
-        // DETECÇÃO DE PEGAR (Transição de Falso para Verdadeiro)
-        if (segurandoRadioAgora && !g_EstavaSegurandoRadio) 
-        {
-            // O jogador ACABOU de pegar o rádio!
-            int beepInHandle = g_BusSFX.play3d(g_SfxBeepIn, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
-            g_Soloud.setVolume(beepInHandle, 0.5f);
-        }
-        // DETECÇÃO DE SOLTAR (Transição de Verdadeiro para Falso)
-        else if (!segurandoRadioAgora && g_EstavaSegurandoRadio) 
-        {
-            // O jogador (ou a gravidade) ACABOU de soltar o rádio!
-            int beepOutHandle = g_BusSFX.play3d(g_SfxBeepOut, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
-            g_Soloud.setVolume(beepOutHandle, 0.5f);
-        }
-
-        // Atualiza a memória para o próximo frame
-        g_EstavaSegurandoRadio = segurandoRadioAgora;
-
-        // Feedback Sonoro do Botão (Áudio 3D)
-        // Variável que diz se tem algo em cima do botão neste exato frame
-        bool botaoPressionadoAgora = g_IsButtonPressed; 
-        
-        if (botaoPressionadoAgora && !g_EstavaBotaoPressionado) 
-        {
-            // O botão acabou de ser afundado! Toca o som na posição XYZ dele.
-            g_BusSFX.play3d(g_SfxButton, 9.0f, -1.0f, -1.0f);
-        } 
-        else if (!botaoPressionadoAgora && g_EstavaBotaoPressionado) 
-        {
-            // O botão acabou de ser solto e subiu!
-            g_BusSFX.play3d(g_SfxButtonUp, 9.0f, -1.0f, -1.0f);
-        }
-        // Atualiza a memória
-        g_EstavaBotaoPressionado = botaoPressionadoAgora;
-
-
-        // Feedback Sonoro da Porta (Áudio 3D)
-        bool portaAbertaAgora = g_IsButtonPressed; 
-        
-        if (portaAbertaAgora && !g_EstavaPortaAberta) 
-        {
-            // A porta acabou de ser destrancada! Toca o som na posição XYZ dela.
-            g_BusSFX.play3d(g_SfxDoor, 8.0f, -1.0f, 6.1f);
-        }
-        else if (!portaAbertaAgora && g_EstavaPortaAberta) 
-        {
-            // A porta acabou de ser destrancada! Toca o som na posição XYZ dela.
-            g_BusSFX.play3d(g_SfxDoorClose, 8.0f, -1.0f, 6.1f);
-        }
-        // Atualiza a memória
-        g_EstavaPortaAberta = portaAbertaAgora;
-
-        // Atualiza a posição tridimensional do áudio do rádio com base na variável global
-        g_Soloud.set3dSourcePosition(g_RadioMusicHandle, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
-
-        // Informações de base sobre a CENA
-        // O chão dela acontece em -1.0f
-        // O teto dela acontece em +3.0f
-        // As paredes da primeira sala vão de -4.0 até +4.0 em x e em z
-        // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
-        // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
+// Desenha TODA a geometria do mundo (jogador, salas, objetos). Foi extraída
+// do loop principal para poder ser re-renderizada pela câmera virtual dos
+// portais (efeito see-through). Apenas emite draw calls: não altera estado de
+// jogo/física. As matrizes view/projection já devem estar nos uniforms.
+void DrawScene()
+{
+    glm::mat4 model = Matrix_Identity();
 
         //Renderização do Personagem do Jogador
         model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
@@ -1544,7 +689,7 @@ int main(int argc, char* argv[])
         {
             // Se estamos enxergando PELA câmera de segurança, o modelo físico 
             // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(camera_view_vector));
+            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
         }
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
         glm::mat4 rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
@@ -1792,7 +937,7 @@ int main(int argc, char* argv[])
         {
             // Se estamos enxergando PELA câmera de segurança, o modelo físico 
             // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(camera_view_vector));
+            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
         }
         up = glm::vec3(0.0f, 1.0f, 0.0f);
         rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
@@ -1957,6 +1102,1146 @@ int main(int argc, char* argv[])
 
         glEnable(GL_CULL_FACE);
         glDisable(GL_BLEND);
+}
+
+// --- Portais ---------------------------------------------------------------
+PortalPair          g_Portals;        // par de portais (azul + laranja) — Sala 1
+PortalPair          g_Portals2;       // segundo par (teto + parede) — Sala 2
+PortalPair          g_Portals3;       // terceiro par (fundo + esquerda) — Sala 2
+PortalCrossingState g_PlayerCrossing; // estado de travessia do jogador (par 1)
+PortalCrossingState g_BoxCrossing;    // estado de travessia da caixa    (par 1)
+PortalCrossingState g_RadioCrossing;  // estado de travessia do rádio   (par 1)
+PortalCrossingState g_PlayerCrossing2;// estado de travessia do jogador (par 2)
+PortalCrossingState g_BoxCrossing2;   // estado de travessia da caixa    (par 2)
+PortalCrossingState g_RadioCrossing2; // estado de travessia do rádio   (par 2)
+PortalCrossingState g_PlayerCrossing3;// estado de travessia do jogador (par 3)
+PortalCrossingState g_BoxCrossing3;   // estado de travessia da caixa    (par 3)
+PortalCrossingState g_RadioCrossing3; // estado de travessia do rádio   (par 3)
+
+// Raio de colisão de cada entidade (usado no offset frontal p/ detecção de travessia).
+// Deve refletir o raio do cilindro (jogador) ou metade da largura da AABB (caixa/rádio).
+static const float PLAYER_BODY_RADIUS = 0.25f;
+static const float BOX_BODY_RADIUS    = 0.3f;
+static const float RADIO_BODY_RADIUS  = 0.2f;
+
+// Thunks: permitem ao módulo de portais chamar a renderização definida aqui.
+static void Portal_DrawScene() { DrawScene(); }
+static void Portal_DrawPlane() { DrawVirtualObject("the_plane"); }
+
+int main(int argc, char* argv[])
+{
+    // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do
+    // sistema operacional, onde poderemos renderizar com OpenGL.
+    int success = glfwInit();
+    if (!success)
+    {
+        fprintf(stderr, "ERROR: glfwInit() failed.\n");
+        std::exit(EXIT_FAILURE);
+    }
+
+    // Definimos o callback para impressão de erros da GLFW no terminal
+    glfwSetErrorCallback(ErrorCallback);
+
+    // Pedimos para utilizar OpenGL versão 3.3 (ou superior)
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+
+    #ifdef __APPLE__
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    #endif
+
+    // Pedimos para utilizar o perfil "core", isto é, utilizaremos somente as
+    // funções modernas de OpenGL.
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    // Stencil buffer (8 bits) necessário para o efeito see-through dos portais.
+    glfwWindowHint(GLFW_STENCIL_BITS, 8);
+
+    /* // Criamos uma janela do sistema operacional, com 800 colunas e 600 linhas
+    // de pixels, e com título "INF01047 ...".
+    GLFWwindow* window;
+    window = glfwCreateWindow(800, 600, "Portal 3", NULL, NULL);
+    if (!window)
+    {
+        glfwTerminate();
+        fprintf(stderr, "ERROR: glfwCreateWindow() failed.\n");
+        std::exit(EXIT_FAILURE);
+    } */
+
+    // Pega o monitor principal do usuário
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    
+    // Pega as especificações de vídeo (Resolução e Taxa de Atualização) desse monitor
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+
+    // Damos algumas dicas para o GLFW respeitar as cores e os Hertz do monitor (Opcional, mas recomendado)
+    glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+    glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+    glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+    glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+
+    // Criamos a janela em Tela Cheia passando a resolução nativa e o ponteiro do monitor
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Portal 3", primaryMonitor, NULL);
+    
+    if (!window)
+    {
+        glfwTerminate();
+        fprintf(stderr, "ERROR: glfwCreateWindow() failed.\n");
+        std::exit(EXIT_FAILURE);
+    }
+
+    // Definimos a função de callback que será chamada sempre que o usuário
+    // pressionar alguma tecla do teclado ...
+    glfwSetKeyCallback(window, KeyCallback);
+    // ... ou clicar os botões do mouse ...
+    glfwSetMouseButtonCallback(window, MouseButtonCallback);
+    // ... ou movimentar o cursor do mouse em cima da janela ...
+    glfwSetCursorPosCallback(window, CursorPosCallback);
+    // ... ou rolar a "rodinha" do mouse.
+    glfwSetScrollCallback(window, ScrollCallback);
+
+    // Indicamos que as chamadas OpenGL deverão renderizar nesta janela
+    glfwMakeContextCurrent(window);
+
+    // Carregamento de todas funções definidas por OpenGL 3.3, utilizando a
+    // biblioteca GLAD.
+    gladLoadGLLoader((GLADloadproc) glfwGetProcAddress);
+
+    // Definimos a função de callback que será chamada sempre que a janela for
+    // redimensionada, por consequência alterando o tamanho do "framebuffer"
+    // (região de memória onde são armazenados os pixels da imagem).
+    glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
+    //FramebufferSizeCallback(window, 800, 600); // Forçamos a chamada do callback acima, para definir g_ScreenRatio.
+    // Pegamos o tamanho REAL do Framebuffer em pixels (Ignorando a escala do Windows/Mac)
+    int fb_width, fb_height;
+    glfwGetFramebufferSize(window, &fb_width, &fb_height);
+    
+    // Forçamos a chamada inicial com os pixels exatos do seu monitor!
+    FramebufferSizeCallback(window, fb_width, fb_height);
+
+    // Imprimimos no terminal informações sobre a GPU do sistema
+    const GLubyte *vendor      = glGetString(GL_VENDOR);
+    const GLubyte *renderer    = glGetString(GL_RENDERER);
+    const GLubyte *glversion   = glGetString(GL_VERSION);
+    const GLubyte *glslversion = glGetString(GL_SHADING_LANGUAGE_VERSION);
+
+    printf("GPU: %s, %s, OpenGL %s, GLSL %s\n", vendor, renderer, glversion, glslversion);
+
+    // Carregamos os shaders de vértices e de fragmentos que serão utilizados
+    // para renderização. Veja slides 180-200 do documento Aula_03_Rendering_Pipeline_Grafico.pdf.
+    //
+    LoadShadersFromFiles();
+
+    // Carregamos imagens para serem utilizadas como textura
+    LoadTextureImage("../../data/radio/textures/Radio_Metallic.png", false); // TextureImage0
+    LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png",true); // TextureImage1
+    LoadTextureImage("../../data/chell/textures/chell_head_diffuse.png",false);      // TextureImage2
+    LoadTextureImage("../../data/chell/textures/eyeball_l.png",false);      // TextureImage3
+    LoadTextureImage("../../data/chell/textures/chell_torso_diffuse.png",false);      // TextureImage4
+    LoadTextureImage("../../data/chell/textures/chell_legs_diffuse.png",false);      // TextureImage5
+    LoadTextureImage("../../data/chell/textures/chell_hair.png",false);      // TextureImage6
+    LoadTextureImage("../../data/cube/textures/apertureTexture.jpg",false);      // TextureImage7
+    LoadTextureImage("../../data/cube/textures/dirt.jpg",false);      // TextureImage8
+    LoadTextureImage("../../data/cube/textures/dirtMain2.jpg",false);      // TextureImage9
+    LoadTextureImage("../../data/cube/textures/normal.jpg",false);      // TextureImage10
+    LoadTextureImage("../../data/cube/textures/specular.jpg",false);      // TextureImage11
+    LoadTextureImage("../../data/cube/textures/SpecularMap.png",false);      // TextureImage12
+    LoadTextureImage("../../data/cake/cake.png",false);      // TextureImage13
+    LoadTextureImage("../../data/button/textures/portal_button_blue.jpeg",false);      // TextureImage14
+    LoadTextureImage("../../data/cake/candle.png",false);      // TextureImage15
+    LoadTextureImage("../../data/door/textures/portal_door_02_E_upscayl_2x_ultramix-balan.png",false);      // TextureImage16
+    LoadTextureImage("../../data/door/textures/portal_door_02_upscayl_8x_ultramix-balance.png",false);      // TextureImage17
+    LoadTextureImage("../../data/floor/metallic_floor.jpg",true);      // TextureImage18
+    LoadTextureImage("../../data/ceiling/portal_ceiling.png",true);      // TextureImage19
+    LoadTextureImage("../../data/sec_camera/textures/security_camera.png",true);      // TextureImage20
+    LoadTextureImage("../../data/sec_camera/textures/internal_ground_ao_texture.jpeg",true);      // TextureImage21
+    // Texturas do Rádio
+    LoadTextureImage("../../data/radio/textures/Shell_Base_Color.png", false);        // TextureImage22
+    LoadTextureImage("../../data/radio/textures/Radio_Base_Color.png", false);        // TextureImage23
+    LoadTextureImage("../../data/radio/textures/Radio_Grid_Base_Color.png", false);   // TextureImage24
+    LoadTextureImage("../../data/radio/textures/Radio_Screen_Base_Color.png", false); // TextureImage25
+    LoadTextureImage("../../data/radio/textures/Light_Base_Color.png", false);        // TextureImage26
+    LoadTextureImage("../../data/radio/textures/Antenna_Base_Color.png", false);      // TextureImage27
+    LoadTextureImage("../../data/radio/textures/Button_Base_Color.png", false);       // TextureImage28
+    LoadTextureImage("../../data/radio/textures/Button_Rifled_Base_Color.png", false);// TextureImage29
+    LoadTextureImage("../../data/radio/textures/Base_Base_Color.png", false);         // TextureImage30
+    LoadTextureImage("../../data/radio/textures/Radio_Screen_Emissive.png", false); // TextureImage31
+
+
+
+    // Construímos a representação de objetos geométricos através de malhas de triângulos
+    ObjModel spheremodel("../../data/sphere.obj");
+    ComputeNormals(&spheremodel);
+    BuildTrianglesAndAddToVirtualScene(&spheremodel);
+
+    ObjModel bunnymodel("../../data/bunny.obj");
+    ComputeNormals(&bunnymodel);
+    BuildTrianglesAndAddToVirtualScene(&bunnymodel);
+
+    ObjModel planemodel("../../data/plane.obj");
+    ComputeNormals(&planemodel);
+    BuildTrianglesAndAddToVirtualScene(&planemodel);
+
+    ObjModel playermodel("../../data/chell/source/Chell.obj");
+    ComputeNormals(&playermodel);
+    BuildTrianglesAndAddToVirtualScene(&playermodel);
+     
+    ObjModel portalcube("../../data/cube/source/cube.obj");
+    ComputeNormals(&portalcube);
+    BuildTrianglesAndAddToVirtualScene(&portalcube);
+
+    ObjModel portalbutton("../../data/button/source/Button.obj");
+    ComputeNormals(&portalbutton);
+    BuildTrianglesAndAddToVirtualScene(&portalbutton);
+
+    ObjModel portaldoor("../../data/door/source/Door.obj");
+    ComputeNormals(&portaldoor);
+    BuildTrianglesAndAddToVirtualScene(&portaldoor);
+    
+    ObjModel portalopendoor("../../data/door/source/OpenDoor.obj");
+    ComputeNormals(&portalopendoor);
+    BuildTrianglesAndAddToVirtualScene(&portalopendoor);
+
+    ObjModel doorwall("../../data/door_wall/door_wall.obj");
+    ComputeNormals(&doorwall);
+    BuildTrianglesAndAddToVirtualScene(&doorwall);
+
+    ObjModel securitycamera("../../data/sec_camera/source/Sec_camera.obj");
+    ComputeNormals(&securitycamera);
+    BuildTrianglesAndAddToVirtualScene(&securitycamera);
+
+    ObjModel radio("../../data/radio/source/radio.obj");
+    ComputeNormals(&radio);
+    BuildTrianglesAndAddToVirtualScene(&radio);
+
+    ObjModel cake("../../data/cake/cake.obj");
+    ComputeNormals(&cake);
+    BuildTrianglesAndAddToVirtualScene(&cake);
+
+
+    if ( argc > 1 )
+    {
+        ObjModel model(argv[1]);
+        BuildTrianglesAndAddToVirtualScene(&model);
+    }
+
+    // Construímos as AABBs de colisão do cenário (paredes, chão, teto, cubo,
+    // botão), uma única vez, já que a geometria estática não muda em runtime.
+    SetupCollisionAABBs();
+
+    // --- Instanciação dos portais (API intuitiva: ponto + normal da parede) ---
+    // Um par vinculado em paredes opostas e paralelas da Sala 1 (Z=-4 e Z=+4),
+    // ambos centrados no eixo X da sala. O azul está na parede da frente,
+    // o laranja na parede dos fundos, um de frente para o outro.
+    g_Portals = PortalPair::create(
+        Portal::onWall(glm::vec3(0.0f, 1.0f, -3.98f), glm::vec3(0.0f, 0.0f,  1.0f)), // azul  — parede frontal (Z=-4), normal +Z
+        Portal::onWall(glm::vec3(0.0f, 1.0f,  3.98f), glm::vec3(0.0f, 0.0f, -1.0f)), // laranja — parede traseira (Z=+4), normal -Z
+        1.2f, 2.0f);
+
+    g_PlayerCrossing.bodyRadius = PLAYER_BODY_RADIUS;
+    g_BoxCrossing.bodyRadius    = BOX_BODY_RADIUS;
+    g_RadioCrossing.bodyRadius  = RADIO_BODY_RADIUS;
+
+    // --- Segundo par de portais (Sala 2) ---
+    // Um no teto (Y=+3) e outro na parede direita (X=+12), ambos na Sala 2,
+    // centrados em X=8/Z=1 (teto) e X=12/Z=1 (parede).
+    {
+        Portal ceiling;
+        ceiling.center = glm::vec3(8.0f, 2.70f, 1.0f);
+        ceiling.normal = glm::vec3(0.0f, -1.0f, 0.0f);
+        ceiling.up     = glm::vec3(0.0f, 0.0f, 1.0f);
+
+        Portal rightWall;
+        rightWall.center = glm::vec3(11.98f, 1.0f, 1.0f);
+        rightWall.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
+        rightWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        g_Portals2 = PortalPair::create(ceiling, rightWall, 1.2f, 2.0f);
+    }
+
+    g_PlayerCrossing2.bodyRadius = PLAYER_BODY_RADIUS;
+    g_BoxCrossing2.bodyRadius    = BOX_BODY_RADIUS;
+    g_RadioCrossing2.bodyRadius  = RADIO_BODY_RADIUS;
+
+    // --- Terceiro par de portais (Sala 2, paredes adjacentes) ---
+    // Um na parede do fundo (Z=-4) e outro na parede esquerda (X=+4.2),
+    // nas proximidades do canto esquerdo-fundo da Sala 2.
+    {
+        Portal backWall;
+        backWall.center = glm::vec3(6.5f, 1.0f, -3.98f);
+        backWall.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+        backWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        Portal leftWall;
+        leftWall.center = glm::vec3(4.23f, 1.0f, -1.5f);
+        leftWall.normal = glm::vec3(1.0f, 0.0f, 0.0f);
+        leftWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        g_Portals3 = PortalPair::create(backWall, leftWall, 1.2f, 2.0f);
+    }
+
+    g_PlayerCrossing3.bodyRadius = PLAYER_BODY_RADIUS;
+    g_BoxCrossing3.bodyRadius    = BOX_BODY_RADIUS;
+    g_RadioCrossing3.bodyRadius  = RADIO_BODY_RADIUS;
+
+    PortalGLContext pctx;
+    pctx.modelUniform      = g_model_uniform;
+    pctx.viewUniform       = g_view_uniform;
+    pctx.projectionUniform = g_projection_uniform;
+    pctx.clipPlaneUniform  = g_clipplane_uniform;
+    pctx.objectIdUniform   = g_object_id_uniform;
+    pctx.portalPassUniform = g_portal_pass_uniform;
+    pctx.drawScene         = Portal_DrawScene;
+    pctx.drawPlane         = Portal_DrawPlane;
+    Portal_SetGLContext(pctx);
+
+    // Inicializamos o código para renderização de texto.
+    TextRendering_Init();
+
+    // Câmera começa com cursor visível (menu)
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
+
+    // Habilitamos o Z-buffer. Veja slides 104-116 do documento Aula_09_Projecoes.pdf.
+    glEnable(GL_DEPTH_TEST);
+
+    // Habilitamos o Backface Culling. Veja slides 8-13 do documento Aula_02_Fundamentos_Matematicos.pdf, slides 23-34 do documento Aula_13_Clipping_and_Culling.pdf e slides 112-123 do documento Aula_14_Laboratorio_3_Revisao.pdf.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+
+    // Inicializa a SoLoud
+    g_Soloud.init(SoLoud::Soloud::CLIP_ROUNDOFF | SoLoud::Soloud::ENABLE_VISUALIZATION);
+
+    // Liga os canais no motor principal E GUARDA O ID DELES!
+    g_BusMusicHandle = g_Soloud.play(g_BusMusic);
+    g_BusSFXHandle   = g_Soloud.play(g_BusSFX);
+    g_Soloud.setPause(g_BusSFXHandle, 1);
+
+    // Aplica os volumes iniciais NA INSTÂNCIA VIVA usando o ID
+    g_Soloud.setGlobalVolume(g_VolumeGlobal);
+    g_Soloud.setVolume(g_BusMusicHandle, g_VolumeMusic);
+    g_Soloud.setVolume(g_BusSFXHandle, g_VolumeSFX);
+
+    // Carrega os 4 sons de passo (ajuste o caminho se necessário)
+    g_SfxWalk[0].load("../../data/audio/sfx/Walk1.wav");
+    g_SfxWalk[1].load("../../data/audio/sfx/Walk2.wav");
+    g_SfxWalk[2].load("../../data/audio/sfx/Walk3.wav");
+    g_SfxWalk[3].load("../../data/audio/sfx/Walk4.wav");
+
+    // Carrega os beeps da caixa
+    g_SfxBeepIn.load("../../data/audio/sfx/Beep-in.mp3");
+    g_SfxBeepOut.load("../../data/audio/sfx/Beep-out.mp3");
+
+    // Carrega os sons de pressionar o botão e abrir a porta
+    g_SfxButton.load("../../data/audio/sfx/Ground_Button.mp3");
+    g_SfxButtonUp.load("../../data/audio/sfx/Ground_ButtonUp.mp3");
+    g_SfxDoor.load("../../data/audio/sfx/Door_Open.mp3");
+    g_SfxDoorClose.load("../../data/audio/sfx/Door_Close.mp3");
+
+    // Carrega as músicas 
+    SoLoud::WavStream musicaDeFundo;
+    musicaDeFundo.load("../../data/audio/music/Ambiente.mp3");
+    musicaDeFundo.setLooping(1); // Faz repetir para sempre
+
+    g_MusicStillAlive.load("../../data/audio/music/Still_Alive.mp3");
+
+    g_MusicWantYouGone.load("../../data/audio/music/Want_You_Gone.mp3");
+
+    // Carrega a música do rádio (ajuste o nome do arquivo se necessário)
+    g_RadioMusic.load("../../data/audio/music/Radio.mp3"); 
+    g_RadioMusic.setLooping(true); // Faz a música do rádio rodar em loop infinito
+
+    // Configura a atenuação linear para o som sumir se o jogador se afastar
+    g_RadioMusic.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_RadioMusic.set3dMinMaxDistance(1.0f, 4.0f); // O som zera completamente a 10 unidades de distância
+
+    // Inicia o áudio 3D dentro do canal de músicas (g_BusMusic) na posição inicial do rádio
+    g_RadioMusicHandle = g_BusSFX.play3d(g_RadioMusic, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+    
+    // Define o volume inicial dele bem baixinho para ficar de fundo ambiente
+    g_Soloud.setVolume(g_RadioMusicHandle, 0.2f);
+
+    // Carrega os arquivos
+    g_Glados001.load("../../data/audio/sfx/Glados_001.mp3");
+    g_Glados002.load("../../data/audio/sfx/Glados_002.mp3");
+
+
+
+    // Toca a música de fundo
+    g_BGMHandle = g_BusMusic.play(musicaDeFundo);
+
+    // CONFIGURAÇÃO DE ATENUAÇÃO 3D (VOLUME A DISTÂNCIA)
+    // O parâmetro LINEAR_DISTANCE força o volume a cair até 0% no MaxDistance.
+    // O segundo parâmetro (1.0f) é o fator de rolloff (caída padrão).
+    
+    g_SfxButton.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxButton.set3dMinMaxDistance(1.0f, 10.0f);
+    g_SfxButtonUp.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxButtonUp.set3dMinMaxDistance(1.0f, 10.0f);
+    g_SfxDoor.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxDoor.set3dMinMaxDistance(1.0f, 10.0f);
+    g_SfxDoorClose.set3dAttenuation(SoLoud::AudioSource::LINEAR_DISTANCE, 0.75f);
+    g_SfxDoorClose.set3dMinMaxDistance(1.0f, 10.0f);
+
+    // Inicializamos ultimoFrame aqui para evitar um deltaTime gigante no primeiro
+    // frame (o carregamento dos assets leva vários segundos, e ultimoFrame = 0
+    // causaria gravidade acumulada suficiente para teleportar o jogador para -∞)
+    ultimoFrame = (float)glfwGetTime();
+
+    // Ficamos em um loop infinito, renderizando, até que o usuário feche a janela
+    while (!glfwWindowShouldClose(window))
+    {
+        // Aqui executamos as operações de renderização
+
+        // Cálculos de tempo
+        float atualFrame = (float)glfwGetTime();
+        deltaTime = atualFrame - ultimoFrame;
+        ultimoFrame = atualFrame;
+
+        // Limitador de Delta Time (Anti-Tunneling) ---
+        // Se o frame demorar mais de 0.05 segundos (menos de 20 FPS) devido a 
+        // arrastar a janela ou lag, nós travamos o tempo para a física não explodir.
+        if (deltaTime > 0.05f) 
+        {
+            deltaTime = 0.05f;
+        }
+
+        // Movimento do jogador relativo à direção da câmera FPS
+        float fwd_x = -sin(g_CameraTheta);
+        float fwd_z = -cos(g_CameraTheta);
+        float right_x =  cos(g_CameraTheta);
+        float right_z = -sin(g_CameraTheta);
+
+        // Acumulamos o deslocamento desejado neste frame e só então tentamos
+        // aplicá-lo, verificando colisão eixo a eixo (TryMovePlayer faz o
+        // jogador "deslizar" ao longo de paredes em vez de travar nelas).
+        float desired_dx = 0.0f;
+        float desired_dz = 0.0f;
+
+        // Calcula a velocidade do frame: se segurar SHIFT (esquerdo ou direito), corre mais rápido!
+        float velocidade_atual = velocidade;
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+            glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
+        {
+            velocidade_atual = velocidade * 1.6f; // 60% mais rápido ao correr
+        }
+
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS && g_GameStarted)
+        {
+            desired_dx += fwd_x * velocidade_atual * deltaTime;
+            desired_dz += fwd_z * velocidade_atual * deltaTime;
+        }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS && g_GameStarted)
+        {
+            desired_dx -= fwd_x * velocidade_atual * deltaTime;
+            desired_dz -= fwd_z * velocidade_atual * deltaTime;
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS && g_GameStarted)
+        {
+            desired_dx -= right_x * velocidade_atual * deltaTime;
+            desired_dz -= right_z * velocidade_atual * deltaTime;
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS && g_GameStarted)
+        {
+            desired_dx += right_x * velocidade_atual * deltaTime;
+            desired_dz += right_z * velocidade_atual * deltaTime;
+        }
+
+        // Momento horizontal carregado ao sair de um portal (decai com o tempo).
+        desired_dx += g_PlayerPortalVel.x * deltaTime;
+        desired_dz += g_PlayerPortalVel.z * deltaTime;
+        g_PlayerPortalVel *= std::exp(-deltaTime * 3.0f);
+
+        TryMovePlayer(desired_dx, desired_dz);
+
+        // Pulo: detectamos a borda de subida da tecla espaço (o instante em que
+        // ela é pressionada, não enquanto fica segurada) e só permitimos pular
+        // quando o jogador está apoiado no chão (sem pulo duplo no ar)
+        bool spacePressedNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround() && g_GameStarted)
+        {
+            // Aplica a força física para cima
+            g_PlayerVelocityY = FORCA_PULO;
+
+            if(g_CameraMode == CAMERA_FPS)
+            {
+                // Sorteia qual dos 4 passos vai tocar
+                int randomStep = rand() % 4;
+                
+                // Toca o som no canal de Efeitos Sonoros e "captura" a ID
+                int jumpHandle = g_BusSFX.play(g_SfxWalk[randomStep]);
+                
+                // Aumenta o volume dessa instância em 50% (1.5f) ou até dobrar (2.0f)
+                // Como usamos o Handle, isso afeta SÓ ESSE PULO, não os passos normais!
+                g_Soloud.setVolume(jumpHandle, 0.7f); 
+                
+                // [BÔNUS DE GAME FEEL] 
+                // Diminuir a velocidade do áudio em 15% deixa o som mais "grave/pesado",
+                // vendendo a ilusão de que o jogador fez muito mais força nas pernas.
+                g_Soloud.setRelativePlaySpeed(jumpHandle, 0.85f);
+            }
+        }
+        g_SpaceWasPressed = spacePressedNow;
+
+        // Gravidade: aceleramos a velocidade vertical e tentamos aplicar o
+        // deslocamento resultante; colisões com chão/teto zeram a velocidade
+        g_PlayerVelocityY += GRAVIDADE * deltaTime;
+        TryMovePlayerVertical(g_PlayerVelocityY * deltaTime);
+
+        // --- Portais: travessia do jogador (SNAP) ---
+        // Monta a velocidade 3D atual (horizontal pretendida + vertical), deixa o
+        // portal transformá-la e devolve posição, olhar e velocidade do outro lado.
+        if (g_GameStarted && deltaTime > 1e-5f)
+        {
+            glm::vec3 ppos = glm::vec3(Pos_Player);
+            glm::vec3 pvel(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
+            if (g_Portals.teleportPlayer(g_PlayerCrossing, ppos, pvel,
+                                         g_CameraTheta, g_CameraPhi))
+            {
+                Pos_Player = glm::vec4(ppos, 1.0f);
+                g_PlayerVelocityY = pvel.y;
+                g_PlayerPortalVel = glm::vec3(pvel.x, 0.0f, pvel.z);
+            }
+            // Segundo par (Sala 2)
+            {
+                glm::vec3 ppos2 = glm::vec3(Pos_Player);
+                glm::vec3 pvel2(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
+                if (g_Portals2.teleportPlayer(g_PlayerCrossing2, ppos2, pvel2,
+                                             g_CameraTheta, g_CameraPhi))
+                {
+                    Pos_Player = glm::vec4(ppos2, 1.0f);
+                    g_PlayerVelocityY = pvel2.y;
+                    g_PlayerPortalVel = glm::vec3(pvel2.x, 0.0f, pvel2.z);
+                }
+            }
+            // Terceiro par (Sala 2)
+            {
+                glm::vec3 ppos3 = glm::vec3(Pos_Player);
+                glm::vec3 pvel3(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
+                if (g_Portals3.teleportPlayer(g_PlayerCrossing3, ppos3, pvel3,
+                                             g_CameraTheta, g_CameraPhi))
+                {
+                    Pos_Player = glm::vec4(ppos3, 1.0f);
+                    g_PlayerVelocityY = pvel3.y;
+                    g_PlayerPortalVel = glm::vec3(pvel3.x, 0.0f, pvel3.z);
+                }
+            }
+        }
+
+
+        // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
+        // definida como coeficientes RGBA: Red, Green, Blue, Alpha; isto é:
+        // Vermelho, Verde, Azul, Alpha (valor de transparência).
+        // Conversaremos sobre sistemas de cores nas aulas de Modelos de Iluminação.
+        //
+        //           R     G     B     A
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+        // "Pintamos" todos os pixels do framebuffer com a cor definida acima,
+        // e também resetamos todos os pixels do Z-buffer (depth buffer).
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        // Pedimos para a GPU utilizar o programa de GPU criado acima (contendo
+        // os shaders de vértice e fragmentos).
+        glUseProgram(g_GpuProgramID);
+
+        // Câmera FPS: posição na cabeça do jogador, direção controlada pelo mouse
+        // Câmera de segurança: posição fixa no canto superior, lookat animado por Bézier cúbica
+        glm::vec4 camera_position_c;
+        glm::vec4 camera_view_vector;
+        glm::vec4 camera_up_vector = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            // Distância que a câmera deve ficar à frente do centro do modelo
+            float camera_offset_forward = 0.1f;
+
+            // Vetor de direção "frente" no plano horizontal (ignorando inclinação da cabeça)
+            float dir_x = -sin(g_CameraTheta);
+            float dir_z = -cos(g_CameraTheta);
+
+            // Cabeça do jogador + deslocamento (offset) na direção que ele está olhando
+            camera_position_c = Pos_Player + glm::vec4(
+                camera_offset_forward * dir_x, 
+                FPS_EYE_HEIGHT, 
+                camera_offset_forward * dir_z, 
+                0.0f
+            );
+            
+            // Bob de câmera ao caminhar: oscilação em Y e Z (eixo de profundidade da câmera)
+            bool isMoving = (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS
+                         || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS
+                         || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS
+                         || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS);
+            if (isMoving)
+            {
+                float t = (float)glfwGetTime();
+                
+                // Se estiver correndo, os passos são mais rápidos
+                float freq_multiplier = 1.0f;
+                if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+                    freq_multiplier = 1.4f;
+                }
+
+                // Y sobe e desce (Reduzimos a amplitude de 0.05 para 0.02 para suavizar)
+                camera_position_c.y += 0.02f * sin(t * 10.0f * freq_multiplier);
+                
+                // Z avança e recua (Reduzimos a amplitude de 0.025 para 0.01)
+                float bob_z = 0.01f * sin(t * 20.0f * freq_multiplier);
+                
+                camera_position_c.x += bob_z * (-sin(g_CameraTheta));
+                camera_position_c.z += bob_z * (-cos(g_CameraTheta));
+            }
+
+            // Direção: vetor em coordenadas esféricas controlado pelo mouse
+            float vx = -cos(g_CameraPhi) * sin(g_CameraTheta);
+            float vy =  sin(g_CameraPhi);
+            float vz = -cos(g_CameraPhi) * cos(g_CameraTheta);
+            camera_view_vector = glm::vec4(vx, vy, vz, 0.0f);
+
+            // Sistema de Som de Passos (Footsteps)
+            if (isMoving && IsPlayerOnGround()) 
+            {
+                // Acumula o tempo que passou
+                g_FootstepTimer += deltaTime;
+                
+                // Define o intervalo dependendo se está correndo ou andando
+                // (Um passo a cada 0.45s andando, ou 0.30s correndo)
+                bool isSprinting = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+                                    glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+                
+                float stepInterval = isSprinting ? 0.30f : 0.45f;
+
+                // Se o tempo acumulado passou do intervalo, toca o som!
+                if (g_FootstepTimer >= stepInterval) 
+                {
+                    // Sorteia um número de 0 a 3
+                    int randomStep = rand() % 4;
+                    
+                    // Toca o passo sorteado no canal de Efeitos Sonoros
+                    int stepHandle = g_BusSFX.play(g_SfxWalk[randomStep]);
+                    g_Soloud.setVolume(stepHandle, 0.4f);
+                    
+                    // Reseta o cronômetro para começar a contar o próximo passo
+                    g_FootstepTimer = 0.0f; 
+                }
+            } 
+            else if (!isMoving) 
+            {
+                // Se o jogador parar completamente, deixamos o timer engatilhado.
+                // Assim, quando ele voltar a andar, o primeiro passo soa na mesma hora!
+                g_FootstepTimer = 100.0f; 
+            }
+        }
+        else // CAMERA_SECURITY
+        {
+            // Define a posição base dependendo de qual câmera está ativa
+            if (g_ActiveSecurityCamera == 0) {
+                camera_position_c = glm::vec4(-3.8f, 2.8f, -3.8f, 1.0f); // Sala 1
+            } else {
+                camera_position_c = glm::vec4(8.0f, 2.8f, 5.8f, 1.0f);   // Sala 2
+            }
+
+            // Define a direção da visão com base no modo (mov_sec_camera)
+            if (mov_sec_camera == 1) 
+            {
+                // --- MODO 1: Seguir o Jogador (LookAt) ---
+                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
+                
+                // Aplica o sistema anti-parede apenas para a câmera 0 (para não atravessar a parede)
+                if (g_ActiveSecurityCamera == 0) {
+                    float dist_x = std::abs(target_player.x - camera_position_c.x);
+                    float dist_z = std::abs(target_player.z - camera_position_c.z);
+                    float dist = std::max(dist_x, dist_z);
+                    float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+                    float limite_parede = glm::mix(-1.3f, -2.8f, t);
+                    
+                    if (target_player.x < limite_parede) target_player.x = limite_parede;
+                    if (target_player.z < limite_parede) target_player.z = limite_parede;
+                }
+
+                // O vetor de visão global é do alvo até a câmera
+                glm::vec3 dir = target_player - glm::vec3(camera_position_c);
+                camera_view_vector = glm::vec4(dir.x, dir.y, dir.z, 0.0f);
+            }
+            else
+            {
+                // --- MODO 2: Varredura Automática (Bézier) ---
+                // O cálculo de tempo é o mesmo para todas as câmeras
+                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
+                float ping = raw < 1.0f ? raw : 2.0f - raw;
+                int   seg  = (int)(ping * 3.0f);
+                if (seg > 2) seg = 2;
+                float local_t = ping * 3.0f - (float)seg;
+                if (local_t > 1.0f) local_t = 1.0f;
+                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+                
+                if (g_ActiveSecurityCamera == 0) 
+                {
+                    // --- CÂMERA 0: Sala 1 ---
+
+                    const glm::vec4 wp[4] = {
+                        glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
+                        glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
+                        glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
+                        glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
+                    };
+
+                    glm::vec4 from = wp[seg];
+                    glm::vec4 to   = wp[seg + 1];
+                    glm::vec4 lookat_target = BezierCubic(
+                        from, from + (to - from) * (1.0f / 3.0f), from + (to - from) * (2.0f / 3.0f), to, smooth_t
+                    );
+                    camera_view_vector = lookat_target - camera_position_c;
+                }
+                else if (g_ActiveSecurityCamera == 1)
+                {
+                    // --- CÂMERA 1: Sala 2 (Em cima da porta olhando pra frente) ---
+
+                    // Sala 2 vai de X: 4.2 a 12, Z: -4 a 6. A porta aberta está em (8, y, 6).
+                const glm::vec4 wp[4] = {
+                        glm::vec4( 4.5f,  1.0f,  2.0f, 1.0f), // 0: Perto Esquerda
+                        glm::vec4(11.5f,  1.0f, -3.5f, 1.0f), // 1: Longe Direita
+                        glm::vec4( 4.5f, -0.8f, -3.5f, 1.0f), // 2: Longe Esquerda
+                        glm::vec4(11.5f, -0.8f,  2.0f, 1.0f), // 3: Perto Direita
+                    };
+
+                    glm::vec4 from = wp[seg];
+                    glm::vec4 to   = wp[seg + 1];
+                    glm::vec4 lookat_target = BezierCubic(
+                        from, from + (to - from) * (1.0f / 3.0f), from + (to - from) * (2.0f / 3.0f), to, smooth_t
+                    );
+                    camera_view_vector = lookat_target - camera_position_c;
+                }
+            }
+        }
+
+        // Garantir que position_c é ponto (w=1) e view_vector é vetor (w=0),
+        // pois dotproduct() em matrices.h rejeita pontos com exit()
+        camera_position_c.w = 1.0f;
+        camera_view_vector.w = 0.0f;
+
+        // Computamos a matriz "View"
+        glm::mat4 view = Matrix_Camera_View(camera_position_c, camera_view_vector, camera_up_vector);
+
+        // Agora computamos a matriz de Projeção.
+        // Computamos a matriz de Projeção (Sempre Perspectiva)
+        float nearplane = -0.1f;  
+        float farplane  = -20.0f; 
+        float field_of_view = 3.141592f / 3.0f; // 60 graus
+        glm::mat4 projection = Matrix_Perspective(field_of_view, g_ScreenRatio, nearplane, farplane);
+
+
+        // Atualiza a posição do ouvinte (Jogador) para a máquina de som 3D
+        g_Soloud.set3dListenerParameters(
+            camera_position_c.x, camera_position_c.y, camera_position_c.z, // Onde eu estou
+            camera_view_vector.x, camera_view_vector.y, camera_view_vector.z, // Para onde olho
+            camera_up_vector.x, camera_up_vector.y, camera_up_vector.z // Qual lado é "cima"
+        );
+
+        // Manda a SoLoud recalcular o volume das orelhas baseando-se na nova posição!
+        g_Soloud.update3dAudio();
+
+
+        glm::mat4 model = Matrix_Identity(); // Transformação identidade de modelagem
+
+        // Enviamos as matrizes "view" e "projection" para a placa de vídeo
+        // (GPU). Veja o arquivo "shader_vertex.glsl", onde estas são
+        // efetivamente aplicadas em todos os pontos.
+        glUniformMatrix4fv(g_view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
+        glUniformMatrix4fv(g_projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
+
+
+        // Defina uniformes no shader (supondo que você buscou os IDs com glGetUniformLocation)
+        // Dentro do loop, perto de onde você envia view e projection:
+        glUniform4fv(g_flashlight_pos_uniform, 1, glm::value_ptr(camera_position_c));
+        glUniform4fv(g_flashlight_dir_uniform, 1, glm::value_ptr(camera_view_vector));
+        glUniform1i(g_flashlight_on_uniform, (int)g_FlashlightEnabled);
+
+        
+        // Lógica de Interação com a Caixa (Pegar/Soltar - Física, Gravidade e Raycast)
+        // ----------------------------------------------------------------
+        // Lógica de Interação com Objetos (Caixa e Rádio - Tecla E)
+        // ----------------------------------------------------------------
+        bool ePressedNow = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+        
+        if (ePressedNow && !g_EWasPressed && g_CameraMode == CAMERA_FPS)
+        {
+            // Se já estiver segurando a caixa, solta ela
+            if (g_IsHoldingBox) {
+                g_IsHoldingBox = false;
+            } 
+            // Se já estiver segurando o rádio, solta ele
+            else if (g_IsHoldingRadio) {
+                g_IsHoldingRadio = false;
+            } 
+            // Se a mão estiver livre, decide qual pegar com base na proximidade e mira (Garante exclusão mútua)
+            else {
+                // Posição aproximada do bolo que configuramos no cenário (X: 8.0, Y: -0.2, Z: 8.15)
+                glm::vec3 cakePos = glm::vec3(8.0f, -0.2f, 8.15f);
+                float distToCake = glm::distance(glm::vec3(Pos_Player), cakePos);
+                glm::vec3 dirToCake = glm::normalize(cakePos - glm::vec3(Pos_Player));
+                float dotCake = glm::dot(dirToCake, glm::vec3(camera_view_vector));
+
+                // CHECA A VITÓRIA (O BOLO) PRIMEIRO
+                if (distToCake < 2.5f && dotCake > 0.85f && !g_GameWon) {
+                    g_GameWon = true; // Venceu o jogo!
+                    
+                    // Pausa todo o som do jogo e toca a música tema final!
+                    g_Soloud.setPause(g_BGMHandle, 1);
+                    g_Soloud.setPause(g_BusSFXHandle, 1);
+                    g_Soloud.stop(g_GladosHandle); // Caso a GLaDOS ainda esteja falando
+                    
+                    g_WinMusicHandle = g_BusMusic.play(g_MusicStillAlive);
+                    g_Soloud.setVolume(g_WinMusicHandle, 1.0f);
+                }
+                // CHECA OS OBJETOS FÍSICOS SE NÃO GANHOU
+                else {
+                    float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
+                    float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
+                    
+                    glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
+                    glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
+                    
+                    float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
+                    float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
+                    
+                    if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
+                        g_IsHoldingBox = true;
+                        g_BoxVelocityY = 0.0f;
+                    } 
+                    else if (distToRadio < 2.0f && dotRadio > 0.85f && dotRadio > dotBox) {
+                        g_IsHoldingRadio = true;
+                        g_RadioVelocityY = 0.0f;
+                    }
+                }
+            }
+        }
+        g_EWasPressed = ePressedNow;
+
+        // ================================================================
+        // PROCESSAMENTO DE MOVIMENTO E GRAVIDADE DA CAIXA
+        // ================================================================
+        if (g_IsHoldingBox)
+        {
+            // O jogador está segurando a caixa: o Raycast
+            glm::vec3 start = glm::vec3(camera_position_c);
+            start.y -= 0.1f; // Abaixa da linha dos olhos para não cegar o jogador
+            glm::vec3 dir = glm::vec3(camera_view_vector);
+            
+            float max_dist = 1.5f;
+            float step = 0.1f;
+            glm::vec3 finalPos = start;
+
+            // Empurra a caixa aos poucos na direção da visão. 
+            // Se ela bater na parede no caminho, ela para antes de atravessar.
+            for (float d = 0.2f; d <= max_dist; d += step) {
+                glm::vec3 testPos = start + dir * d;
+                if (BoxCollidesAt(testPos)) {
+                    break; // Bateu na parede, usamos a última posição válida (finalPos)
+                }
+                finalPos = testPos;
+            }
+            g_BoxPosition = finalPos;
+
+            // Enquanto segurada, mantemos o estado de travessia "zerado" para não
+            // disparar um teleporte espúrio ao soltar perto de um portal.
+            g_BoxCrossing.initialized = false;
+            g_BoxCrossing2.initialized = false;
+
+            // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
+            g_BoxAngleY = g_CameraTheta;
+
+            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
+            // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
+            // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 1.0 unidades,
+            // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
+            float distToPlayer = glm::distance(start, finalPos);
+            if (distToPlayer < 1.0f) {
+                g_IsHoldingBox = false;
+            }
+        }
+        else
+        {
+            // O jogador soltou a caixa: Gravidade!
+            g_BoxVelocityY += GRAVIDADE * deltaTime;
+            
+            // Simula onde a caixa vai estar no próximo frame
+            glm::vec3 candidatePos = g_BoxPosition;
+            candidatePos.y += g_BoxVelocityY * deltaTime;
+
+            // SISTEMA ANTI-PRISÃO (Caixa bate no jogador/cenário e não atravessa)
+            // Se essa queda não fizer ela bater no chão ou num objeto, ela cai
+            if (!BoxCollidesAt(candidatePos)) {
+                g_BoxPosition.y = candidatePos.y;
+            } else {
+                g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
+            }
+
+            // Momento horizontal vindo de um portal: integra xz com colisão e atrito.
+            if (std::fabs(g_BoxVel.x) + std::fabs(g_BoxVel.z) > 1e-4f)
+            {
+                glm::vec3 ch = g_BoxPosition;
+                ch.x += g_BoxVel.x * deltaTime;
+                ch.z += g_BoxVel.z * deltaTime;
+                if (!BoxCollidesAt(ch)) g_BoxPosition = ch;
+                else { g_BoxVel.x = 0.0f; g_BoxVel.z = 0.0f; }
+                g_BoxVel *= std::exp(-deltaTime * 1.5f);
+            }
+
+            // Travessia de portal (SNAP) para a caixa: transforma posição,
+            // velocidade (vertical + horizontal) e rotação.
+            if (g_GameStarted)
+            {
+                glm::vec3 bvel(g_BoxVel.x, g_BoxVelocityY, g_BoxVel.z);
+                float byaw = g_BoxAngleY;
+                if (g_Portals.teleportIfCrossed(g_BoxCrossing, g_BoxPosition, &bvel, &byaw))
+                {
+                    g_BoxVelocityY = bvel.y;
+                    g_BoxVel = glm::vec3(bvel.x, 0.0f, bvel.z);
+                    g_BoxAngleY = byaw;
+                }
+                // Segundo par (Sala 2)
+                {
+                    glm::vec3 bvel2 = bvel;
+                    float byaw2 = g_BoxAngleY;
+                    if (g_Portals2.teleportIfCrossed(g_BoxCrossing2, g_BoxPosition, &bvel2, &byaw2))
+                    {
+                        g_BoxVelocityY = bvel2.y;
+                        g_BoxVel = glm::vec3(bvel2.x, 0.0f, bvel2.z);
+                        g_BoxAngleY = byaw2;
+                    }
+                }
+                // Terceiro par (Sala 2)
+                {
+                    glm::vec3 bvel3 = bvel;
+                    float byaw3 = g_BoxAngleY;
+                    if (g_Portals3.teleportIfCrossed(g_BoxCrossing3, g_BoxPosition, &bvel3, &byaw3))
+                    {
+                        g_BoxVelocityY = bvel3.y;
+                        g_BoxVel = glm::vec3(bvel3.x, 0.0f, bvel3.z);
+                        g_BoxAngleY = byaw3;
+                    }
+                }
+            }
+        }
+
+        // ================================================================
+        // PROCESSAMENTO DE MOVIMENTO E GRAVIDADE DO RÁDIO
+        // ================================================================
+        if (g_IsHoldingRadio)
+        {
+            // O jogador está segurando o rádio: o Raycast
+            glm::vec3 start = glm::vec3(camera_position_c);
+            start.y -= 0.1f; // Abaixa da linha dos olhos para não cegar o jogador
+            glm::vec3 dir = glm::vec3(camera_view_vector);
+            
+            float max_dist = 1.5f;
+            float step = 0.1f;
+            glm::vec3 finalPos = start;
+
+            // Empurra o rádio aos poucos na direção da visão. 
+            // Se ele bater na parede no caminho, ele para antes de atravessar.
+            for (float d = 0.2f; d <= max_dist; d += step) {
+                glm::vec3 testPos = start + dir * d;
+                if (RadioCollidesAt(testPos)) {
+                    break; // Bateu na parede, usamos a última posição válida (finalPos)
+                }
+                finalPos = testPos;
+            }
+            g_RadioPosition = finalPos;
+
+            // Enquanto segurado, mantém o estado de travessia "zerado" para não
+            // disparar um teleporte espúrio ao soltar perto de um portal.
+            g_RadioCrossing.initialized = false;
+            g_RadioCrossing2.initialized = false;
+            g_RadioCrossing3.initialized = false;
+
+            // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
+            g_RadioAngleY = g_CameraTheta;
+
+            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
+            // Se você anda contra a parede, a parede empurra o rádio na direção da câmera.
+            // Se a distância entre a origem do raio (jogador) e o rádio ficar menor que 1.0 unidades,
+            // o jogador solta o rádio automaticamente para evitar que a câmera entre nele.
+            float distToPlayer = glm::distance(start, finalPos);
+            if (distToPlayer < 1.0f) {
+                g_IsHoldingRadio = false;
+            }
+        }
+        else
+        {
+            // O jogador soltou o rádio: Gravidade!
+            g_RadioVelocityY += GRAVIDADE * deltaTime;
+            
+            // Simula onde o rádio vai estar no próximo frame
+            glm::vec3 candidatePos = g_RadioPosition;
+            candidatePos.y += g_RadioVelocityY * deltaTime;
+
+            // SISTEMA ANTI-PRISÃO (Rádio bate no jogador/cenário e não atravessa)
+            // Se essa queda não fizer ele bater no chão ou num objeto, ele cai
+            if (!RadioCollidesAt(candidatePos)) {
+                g_RadioPosition.y = candidatePos.y;
+            } else {
+                g_RadioVelocityY = 0.0f; // Bateu, zera a velocidade de queda
+            }
+
+            // Momento horizontal vindo de portais (rádio)
+            if (std::fabs(g_RadioVel.x) + std::fabs(g_RadioVel.z) > 1e-4f)
+            {
+                glm::vec3 ch = g_RadioPosition;
+                ch.x += g_RadioVel.x * deltaTime;
+                ch.z += g_RadioVel.z * deltaTime;
+                if (!RadioCollidesAt(ch)) g_RadioPosition = ch;
+                else { g_RadioVel.x = 0.0f; g_RadioVel.z = 0.0f; }
+                g_RadioVel *= std::exp(-deltaTime * 1.5f);
+            }
+
+            // Travessia de portal (SNAP) para o rádio
+            if (g_GameStarted)
+            {
+                glm::vec3 rvel(g_RadioVel.x, g_RadioVelocityY, g_RadioVel.z);
+                float ryaw = g_RadioAngleY;
+                if (g_Portals.teleportIfCrossed(g_RadioCrossing, g_RadioPosition, &rvel, &ryaw))
+                {
+                    g_RadioVelocityY = rvel.y;
+                    g_RadioVel = glm::vec3(rvel.x, 0.0f, rvel.z);
+                    g_RadioAngleY = ryaw;
+                }
+                // Segundo par (Sala 2)
+                {
+                    glm::vec3 rvel2 = rvel;
+                    float ryaw2 = g_RadioAngleY;
+                    if (g_Portals2.teleportIfCrossed(g_RadioCrossing2, g_RadioPosition, &rvel2, &ryaw2))
+                    {
+                        g_RadioVelocityY = rvel2.y;
+                        g_RadioVel = glm::vec3(rvel2.x, 0.0f, rvel2.z);
+                        g_RadioAngleY = ryaw2;
+                    }
+                }
+                // Terceiro par (Sala 2)
+                {
+                    glm::vec3 rvel3 = rvel;
+                    float ryaw3 = g_RadioAngleY;
+                    if (g_Portals3.teleportIfCrossed(g_RadioCrossing3, g_RadioPosition, &rvel3, &ryaw3))
+                    {
+                        g_RadioVelocityY = rvel3.y;
+                        g_RadioVel = glm::vec3(rvel3.x, 0.0f, rvel3.z);
+                        g_RadioAngleY = ryaw3;
+                    }
+                }
+            }
+        }
+
+        // Feedback Sonoro da Caixa (Edge Detection)
+        bool segurandoAgora = g_IsHoldingBox; 
+
+        // DETECÇÃO DE PEGAR (Transição de Falso para Verdadeiro)
+        if (segurandoAgora && !g_EstavaSegurandoCaixa) 
+        {
+            // O jogador ACABOU de pegar a caixa neste exato frame
+            // Toca no Bus, pega a ID e abaixa pra 50%
+            int beepInHandle = g_BusSFX.play(g_SfxBeepIn);
+            g_Soloud.setVolume(beepInHandle, 0.5f);
+        }
+        // DETECÇÃO DE SOLTAR (Transição de Verdadeiro para Falso)
+        else if (!segurandoAgora && g_EstavaSegurandoCaixa) 
+        {
+            // O jogador (ou a física do jogo) ACABOU de soltar a caixa
+            // Toca no Bus, pega a ID e abaixa pra 50%
+            int beepOutHandle = g_BusSFX.play(g_SfxBeepOut);
+            g_Soloud.setVolume(beepOutHandle, 0.5f);
+        }
+
+        // Atualiza a memória para o próximo frame
+        g_EstavaSegurandoCaixa = segurandoAgora;
+
+        // Feedback Sonoro do Rádio (Edge Detection)
+        bool segurandoRadioAgora = g_IsHoldingRadio; 
+
+        // DETECÇÃO DE PEGAR (Transição de Falso para Verdadeiro)
+        if (segurandoRadioAgora && !g_EstavaSegurandoRadio) 
+        {
+            // O jogador ACABOU de pegar o rádio!
+            int beepInHandle = g_BusSFX.play3d(g_SfxBeepIn, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+            g_Soloud.setVolume(beepInHandle, 0.5f);
+        }
+        // DETECÇÃO DE SOLTAR (Transição de Verdadeiro para Falso)
+        else if (!segurandoRadioAgora && g_EstavaSegurandoRadio) 
+        {
+            // O jogador (ou a gravidade) ACABOU de soltar o rádio!
+            int beepOutHandle = g_BusSFX.play3d(g_SfxBeepOut, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+            g_Soloud.setVolume(beepOutHandle, 0.5f);
+        }
+
+        // Atualiza a memória para o próximo frame
+        g_EstavaSegurandoRadio = segurandoRadioAgora;
+
+        // Feedback Sonoro do Botão (Áudio 3D)
+        // Variável que diz se tem algo em cima do botão neste exato frame
+        bool botaoPressionadoAgora = g_IsButtonPressed; 
+        
+        if (botaoPressionadoAgora && !g_EstavaBotaoPressionado) 
+        {
+            // O botão acabou de ser afundado! Toca o som na posição XYZ dele.
+            g_BusSFX.play3d(g_SfxButton, 9.0f, -1.0f, -1.0f);
+        } 
+        else if (!botaoPressionadoAgora && g_EstavaBotaoPressionado) 
+        {
+            // O botão acabou de ser solto e subiu!
+            g_BusSFX.play3d(g_SfxButtonUp, 9.0f, -1.0f, -1.0f);
+        }
+        // Atualiza a memória
+        g_EstavaBotaoPressionado = botaoPressionadoAgora;
+
+
+        // Feedback Sonoro da Porta (Áudio 3D)
+        bool portaAbertaAgora = g_IsButtonPressed; 
+        
+        if (portaAbertaAgora && !g_EstavaPortaAberta) 
+        {
+            // A porta acabou de ser destrancada! Toca o som na posição XYZ dela.
+            g_BusSFX.play3d(g_SfxDoor, 8.0f, -1.0f, 6.1f);
+        }
+        else if (!portaAbertaAgora && g_EstavaPortaAberta) 
+        {
+            // A porta acabou de ser destrancada! Toca o som na posição XYZ dela.
+            g_BusSFX.play3d(g_SfxDoorClose, 8.0f, -1.0f, 6.1f);
+        }
+        // Atualiza a memória
+        g_EstavaPortaAberta = portaAbertaAgora;
+
+        // Atualiza a posição tridimensional do áudio do rádio com base na variável global
+        g_Soloud.set3dSourcePosition(g_RadioMusicHandle, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+
+        // Informações de base sobre a CENA
+        // O chão dela acontece em -1.0f
+        // O teto dela acontece em +3.0f
+        // As paredes da primeira sala vão de -4.0 até +4.0 em x e em z
+        // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
+        // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
+
+        // Câmera atual (usada por billboards). Os portais sobrescrevem isto com
+        // a câmera virtual ao renderizar suas vistas.
+        g_RenderCameraViewVector = camera_view_vector;
+
+        // Desenha o mundo. (renderViews() re-renderiza DrawScene via câmera virtual.)
+        DrawScene();
+
+        // Portais: re-renderiza a cena pela câmera virtual recortada na janela de
+        // cada portal (efeito see-through) e desenha suas superfícies/molduras.
+        if (g_GameStarted && g_CameraMode == CAMERA_FPS)
+        {
+            g_Portals.renderViews(view, projection, 1, 0);
+            g_Portals.renderSurfaces();
+
+            g_Portals2.renderViews(view, projection, 1, 2);
+            g_Portals2.renderSurfaces();
+
+            g_Portals3.renderViews(view, projection, 1, 4);
+            g_Portals3.renderSurfaces();
+        }
 
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
@@ -2547,7 +2832,19 @@ void ResetScene()
     g_CameraMode = CAMERA_FPS;
     mov_sec_camera = 1;
 
-    // 5. Reset das variáveis de debug/poses (Opcional, mas recomendado)
+    // 5. Reset dos estados de travessia dos portais
+    g_PlayerCrossing.initialized = false;
+    g_BoxCrossing.initialized = false;
+    g_RadioCrossing.initialized = false;
+    g_PlayerCrossing2.initialized = false;
+    g_BoxCrossing2.initialized = false;
+    g_RadioCrossing2.initialized = false;
+    g_PlayerCrossing3.initialized = false;
+    g_BoxCrossing3.initialized = false;
+    g_RadioCrossing3.initialized = false;
+    g_PlayerPortalVel = glm::vec3(0.0f);
+
+    // 6. Reset das variáveis de debug/poses (Opcional, mas recomendado)
     g_AngleX = 0.0f; 
     g_AngleY = 0.0f; 
     g_AngleZ = 0.0f;
@@ -2766,11 +3063,13 @@ void LoadShadersFromFiles()
     g_view_uniform       = glGetUniformLocation(g_GpuProgramID, "view"); // Variável da matriz "view" em shader_vertex.glsl
     g_projection_uniform = glGetUniformLocation(g_GpuProgramID, "projection"); // Variável da matriz "projection" em shader_vertex.glsl
     g_object_id_uniform  = glGetUniformLocation(g_GpuProgramID, "object_id"); // Variável "object_id" em shader_fragment.glsl
+    g_portal_pass_uniform = glGetUniformLocation(g_GpuProgramID, "portalPass");
     g_bbox_min_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_min");
     g_bbox_max_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_max");
     g_flashlight_pos_uniform = glGetUniformLocation(g_GpuProgramID, "flashlight_pos"); // Lanterna
     g_flashlight_dir_uniform = glGetUniformLocation(g_GpuProgramID, "flashlight_dir");
     g_flashlight_on_uniform  = glGetUniformLocation(g_GpuProgramID, "flashlight_on");
+    g_clipplane_uniform      = glGetUniformLocation(g_GpuProgramID, "clipPlane"); // recorte dos portais
 
     // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura.
     // Agora o shader usa apenas duas samplers (limite de 16 do macOS): a textura
