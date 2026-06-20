@@ -129,6 +129,11 @@ SoLoud::WavStream g_MusicWantYouGone;
 int g_CreditsMusicHandle = 0;
 int g_GladosHandle = 0; // Para tocarmos a voz só quando o jogo começar!
 
+// Estado de Vitória e Música Final
+bool g_GameWon = false;
+SoLoud::WavStream g_MusicStillAlive;
+int g_WinMusicHandle = 0;
+
 // Cronômetro para controlar o intervalo entre os passos
 float g_FootstepTimer = 100.0f; // Começa alto para o 1º passo tocar instantaneamente
 
@@ -242,6 +247,7 @@ void TextRendering_ShowEulerAngles(GLFWwindow* window);
 void TextRendering_ShowProjection(GLFWwindow* window);
 void TextRendering_ShowFramesPerSecond(GLFWwindow* window);
 void TextRendering_ShowPauseMenu(GLFWwindow* window);
+void TextRendering_ShowWinScreen(GLFWwindow* window);
 
 // Funções callback para comunicação com o sistema operacional e interação do
 // usuário. Veja mais comentários nas definições das mesmas, abaixo.
@@ -665,6 +671,8 @@ int main(int argc, char* argv[])
     musicaDeFundo.load("../../data/audio/music/Ambiente.mp3");
     musicaDeFundo.setLooping(1); // Faz repetir para sempre
 
+    g_MusicStillAlive.load("../../data/audio/music/Still_Alive.mp3");
+
     g_MusicWantYouGone.load("../../data/audio/music/Want_You_Gone.mp3");
 
     // Carrega a música do rádio (ajuste o nome do arquivo se necessário)
@@ -844,10 +852,10 @@ int main(int argc, char* argv[])
             );
             
             // Bob de câmera ao caminhar: oscilação em Y e Z (eixo de profundidade da câmera)
-            bool isMoving = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS
+            bool isMoving = (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS
                          || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS
                          || glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS
-                         || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+                         || glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS);
             if (isMoving)
             {
                 float t = (float)glfwGetTime();
@@ -1101,23 +1109,43 @@ int main(int argc, char* argv[])
             } 
             // Se a mão estiver livre, decide qual pegar com base na proximidade e mira (Garante exclusão mútua)
             else {
-                float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
-                float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
-                
-                glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
-                glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
-                
-                float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
-                float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
-                
-                // Prioriza pegar o objeto que você está olhando mais diretamente (maior Dot Product)
-                if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
-                    g_IsHoldingBox = true;
-                    g_BoxVelocityY = 0.0f; // Corta a gravidade enquanto segura
-                } 
-                else if (distToRadio < 2.0f && dotRadio > 0.85f && dotRadio > dotBox) {
-                    g_IsHoldingRadio = true;
-                    g_RadioVelocityY = 0.0f; // Corta a gravidade enquanto segura
+                // Posição aproximada do bolo que configuramos no cenário (X: 8.0, Y: -0.2, Z: 8.15)
+                glm::vec3 cakePos = glm::vec3(8.0f, -0.2f, 8.15f);
+                float distToCake = glm::distance(glm::vec3(Pos_Player), cakePos);
+                glm::vec3 dirToCake = glm::normalize(cakePos - glm::vec3(Pos_Player));
+                float dotCake = glm::dot(dirToCake, glm::vec3(camera_view_vector));
+
+                // CHECA A VITÓRIA (O BOLO) PRIMEIRO
+                if (distToCake < 2.5f && dotCake > 0.85f && !g_GameWon) {
+                    g_GameWon = true; // Venceu o jogo!
+                    
+                    // Pausa todo o som do jogo e toca a música tema final!
+                    g_Soloud.setPause(g_BGMHandle, 1);
+                    g_Soloud.setPause(g_BusSFXHandle, 1);
+                    g_Soloud.stop(g_GladosHandle); // Caso a GLaDOS ainda esteja falando
+                    
+                    g_WinMusicHandle = g_BusMusic.play(g_MusicStillAlive);
+                    g_Soloud.setVolume(g_WinMusicHandle, 1.0f);
+                }
+                // CHECA OS OBJETOS FÍSICOS SE NÃO GANHOU
+                else {
+                    float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
+                    float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
+                    
+                    glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
+                    glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
+                    
+                    float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
+                    float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
+                    
+                    if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
+                        g_IsHoldingBox = true;
+                        g_BoxVelocityY = 0.0f;
+                    } 
+                    else if (distToRadio < 2.0f && dotRadio > 0.85f && dotRadio > dotBox) {
+                        g_IsHoldingRadio = true;
+                        g_RadioVelocityY = 0.0f;
+                    }
                 }
             }
         }
@@ -1925,8 +1953,11 @@ int main(int argc, char* argv[])
         // por segundo (frames per second).
         TextRendering_ShowFramesPerSecond(window);
 
-        //Imprimos na tela o Menu de Pause
+        // Imprimimos na tela o Menu de Pause
         TextRendering_ShowPauseMenu(window);
+
+        // Imprimimos na tela o Menu de Vitória
+        TextRendering_ShowWinScreen(window);
 
         // O framebuffer onde OpenGL executa as operações de renderização não
         // é o mesmo que está sendo mostrado para o usuário, caso contrário
@@ -2515,6 +2546,9 @@ void ResetScene()
     g_ForearmAngleZ = 0.0f;
     g_TorsoPositionX = 0.0f; 
     g_TorsoPositionY = 0.0f;
+
+    g_GameWon = false;
+    g_Soloud.stop(g_WinMusicHandle);
 }
 
 // Função que carrega uma imagem para ser utilizada como textura
@@ -3308,6 +3342,31 @@ void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
             }
         }
     }
+
+    // Interação com a Tela de Vitória
+    if (g_GameWon && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+    {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+
+        float mx = (float)(2.0 * xpos / width - 1.0);
+        float my = (float)(1.0 - 2.0 * ypos / height);
+
+        // Checa se clicou no botão "[ JOGAR NOVAMENTE ]" no centro inferior
+        if (mx >= -0.35f && mx <= 0.35f && my >= -0.65f && my <= -0.45f) {
+            ResetScene(); 
+            // ResetScene lida com g_GameWon = false, mas precisamos garantir que o modo volte pro FPS ou Menu Principal.
+            g_GameStarted = false; // Manda de volta pro Menu Principal
+            g_IsPaused = true;
+            g_CameraMode = CAMERA_SECURITY;
+            
+            g_Soloud.stop(g_WinMusicHandle); // Para a música Still Alive
+            g_Soloud.setPause(g_BGMHandle, 0); // Devolve a música ambiente
+            // O cursor se manterá normal pois estamos mandando pro Menu Principal
+        }
+    }
 }
 
 // Função callback chamada sempre que o usuário movimentar o cursor do mouse em
@@ -3430,7 +3489,31 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     // Se o usuário apertar a tecla R, reinicia a cena inteira.
     if (key == GLFW_KEY_R && action == GLFW_PRESS && g_CameraMode == CAMERA_FPS)
     {
-        ResetScene();
+        // Se o cara apertou R durante a tela de vitória, volta pro Menu Principal!
+        if (g_GameWon) {
+
+            ResetScene();
+            g_GameWon = false;
+            g_GameStarted = false; // Manda pro Menu Principal
+            g_IsPaused = true;
+            g_CameraMode = CAMERA_SECURITY;
+            mov_sec_camera = 2; // Volta pro Bézier
+            
+            // Arruma os sons de volta pro estado de Título
+            g_Soloud.stop(g_WinMusicHandle); // Para a música de vitória
+            g_Soloud.setPause(g_BGMHandle, 0); // Despausa o ambiente
+            g_Soloud.setPause(g_BusSFXHandle, 1); // Pausa os SFX de novo até ele jogar
+            
+            // Traz o mouse de volta para o menu
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL); 
+        }
+        else
+        {
+            ResetScene();
+        }
+
+        
+        
         fflush(stdout);
     }
 
@@ -3448,6 +3531,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         
         // Se o jogo ainda não começou, o ESC não faz NADA!
         if (!g_GameStarted) return;
+        if (g_GameWon) return;
 
         g_IsPaused = !g_IsPaused;
         
@@ -3700,6 +3784,24 @@ void TextRendering_ShowPauseMenu(GLFWwindow* window)
         
         TextRendering_PrintString(window, "Voltar", left_x, -0.6f, GetHoverScale(left_x, -0.4f, -0.65f, -0.55f, 1.5f));
     }
+}
+
+void TextRendering_ShowWinScreen(GLFWwindow* window)
+{
+    if (!g_GameWon) return;
+
+    float left_x = -0.85f;
+
+    // Textos alinhados à esquerda com a temática da Aperture
+    TextRendering_PrintString(window, "PARABENS, OBRIGADO POR JOGAR!", left_x, 0.6f, 2.0f);
+    
+    TextRendering_PrintString(window, "> AVALIACAO DA COBAIA: SUCESSO EXCEPCIONAL", left_x, 0.3f, 1.2f);
+    TextRendering_PrintString(window, "> PROTOCOLO DE FESTA: INICIADO", left_x, 0.15f, 1.2f);
+    TextRendering_PrintString(window, "> AVISO: O BOLO E REAL.", left_x, 0.0f, 1.2f);
+
+    // Efeito visual pulsante suave na instrução de reiniciar (usando o tempo do GLFW)
+    float pulse = (sin(glfwGetTime() * 4.0f) + 1.0f) / 2.0f; // Varia de 0.0 a 1.0
+    TextRendering_PrintString(window, "Aperte 'R' para reiniciar o sistema...", left_x, -0.4f, 1.2f + 0.1f * pulse);
 }
 
 // Função para debugging: imprime no terminal todas informações de um modelo
