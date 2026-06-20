@@ -58,6 +58,11 @@ uniform int flashlight_on;
 #define RADIO_BUTTON 31
 #define RADIO_BUTTON_RIFLED 32
 #define RADIO_BASE_PART 33
+#define CAKE 34
+#define CAKE_CANDLE 35
+#define CAKE_CHERRY 36
+#define CAKE_CHERRY_CREAM 37
+#define CAKE_BOTTOM 38
 
 uniform int object_id;
 
@@ -118,7 +123,7 @@ const float PI = 3.14159265358979323846;
 
 // Luzes direcionais configuradas diretamente no shader.
 // --- LUZES DA CENA (Point Lights) ---
-const int LIGHT_COUNT = 10; // 4 da Sala 1 + 6 da Sala 2
+const int LIGHT_COUNT = 11; // 4 da Sala 1 + 6 da Sala 2 + 1 da Sala 3
 
 const vec3 LIGHT_POSITIONS[LIGHT_COUNT] = vec3[](
     // ================= SALA 1 =================
@@ -143,7 +148,10 @@ const vec3 LIGHT_POSITIONS[LIGHT_COUNT] = vec3[](
     
     // A PAREDE DIAGONAL: Fica em X=11.0, Z=-2.7. 
     // Vamos puxar essa luz mais para o meio (X=9.5, Z=-1.5) para ela não ficar dentro do concreto!
-    vec3( 9.5, 2.9, -3.8)  
+    vec3( 9.5, 2.9, -3.8),
+
+    // Cima da Sala 3
+    vec3(8.0, 2.9, 8.0) // Esquerda Frente (Perto da porta da Sala 1)
 );
 
 // Cor das luzes (O tom azulado frio de laboratório)
@@ -153,7 +161,9 @@ const vec3 LIGHT_COLORS[LIGHT_COUNT] = vec3[](
     
     // Sala 2 (6 luzes)
     vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), 
-    vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8)
+    vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8), vec3(0.4, 0.6, 0.8),
+
+    vec3(0.4, 0.6, 0.8)
 );
 
 // Constantes
@@ -431,7 +441,6 @@ void main()
     }
     else if (object_id == SEC_CAM)
     {
-
         U = texcoords.x;
         V = texcoords.y;
 
@@ -458,21 +467,29 @@ void main()
     }
     else if ( object_id == RADIO_SHELL) 
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage22, vec2(U,V)).rgb;
     }
     else if ( object_id == RADIO_MAIN)
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage23, vec2(U,V)).rgb;
         // LÊ A TEXTURA ZERO! Pegamos o canal vermelho (r) pois a imagem é em preto e branco.
         metalness = texture(TextureImage0, vec2(U,V)).r;
     }
     else if ( object_id == RADIO_GRID)
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage24, vec2(U,V)).rgb;
         metalness = 1.0; // Como não temos textura pra grade, forçamos 100% metal
     }
     else if ( object_id == RADIO_SCREEN) 
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage25, vec2(U,V)).rgb;
 
         // Pega a textura Emissiva
@@ -481,6 +498,8 @@ void main()
     }
     else if ( object_id == RADIO_LIGHT) 
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage26, vec2(U,V)).rgb;
         
         // Em vez de gastar o canal 32 com a imagem "Light_Emissive", nós simplesmente
@@ -489,22 +508,58 @@ void main()
     }
     else if ( object_id == RADIO_ANTENNA) 
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage27, vec2(U,V)).rgb;
         metalness = 1.0; // Força 100% metal
     }
     else if ( object_id == RADIO_BUTTON)
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage28, vec2(U,V)).rgb;
     }
     else if ( object_id == RADIO_BUTTON_RIFLED)
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage29, vec2(U,V)).rgb;
         metalness = 1.0; // Força 100% metal
     }
     else if ( object_id == RADIO_BASE_PART)
     {
+        U = texcoords.x;
+        V = texcoords.y;
         Kd0 = texture(TextureImage30, vec2(U,V)).rgb;
     }
+    else if ( object_id == CAKE)
+    {
+        U = texcoords.x;
+        V = texcoords.y;
+        Kd0 = texture(TextureImage13, vec2(U,V)).rgb;
+    }
+    else if ( object_id == CAKE_CANDLE)
+    {
+        U = texcoords.x;
+        V = texcoords.y;
+        Kd0 = texture(TextureImage15, vec2(U,V)).rgb;
+    }
+    else if ( object_id == CAKE_CHERRY)
+    {
+        Kd0 = vec3(0.65, 0.05, 0.15);
+    }
+    else if ( object_id == CAKE_CHERRY_CREAM)
+    {
+        Kd0 = vec3(0.92, 0.90, 0.90);
+    }
+    else if ( object_id == CAKE_BOTTOM)
+    {
+        Kd0 = vec3(0.85, 0.40, 0.05);
+    }
+
+
+
+
 
 
   // --- CÁLCULO DAS LUZES DO TETO ---

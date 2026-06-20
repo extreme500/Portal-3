@@ -34,6 +34,9 @@ Modelo da câmera de segurança
 
 Modelo do rádio
 * https://sketchfab.com/3d-models/portal-radio-9896a03c4dbf4cb78c31ffcf1d850ece 
+
+Modelo do bolo
+* https://plewr.itch.io/portal-cake-low-poly 
   
 Video de gameplay 
 * https://www.youtube.com/watch?v=KZDJNJeTYQI 

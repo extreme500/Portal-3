@@ -487,9 +487,9 @@ int main(int argc, char* argv[])
     LoadTextureImage("../../data/cube/textures/normal.jpg",false);      // TextureImage10
     LoadTextureImage("../../data/cube/textures/specular.jpg",false);      // TextureImage11
     LoadTextureImage("../../data/cube/textures/SpecularMap.png",false);      // TextureImage12
-    LoadTextureImage("../../data/button/textures/portal_button_blue emission.png",false);      // TextureImage13
+    LoadTextureImage("../../data/cake/cake.png",false);      // TextureImage13
     LoadTextureImage("../../data/button/textures/portal_button_blue.jpeg",false);      // TextureImage14
-    LoadTextureImage("../../data/door/textures/internal_ground_ao_texture.jpeg",false);      // TextureImage15
+    LoadTextureImage("../../data/cake/candle.png",false);      // TextureImage15
     LoadTextureImage("../../data/door/textures/portal_door_02_E_upscayl_2x_ultramix-balan.png",false);      // TextureImage16
     LoadTextureImage("../../data/door/textures/portal_door_02_upscayl_8x_ultramix-balance.png",false);      // TextureImage17
     LoadTextureImage("../../data/floor/metallic_floor.jpg",true);      // TextureImage18
@@ -554,6 +554,10 @@ int main(int argc, char* argv[])
     ObjModel radio("../../data/radio/source/radio.obj");
     ComputeNormals(&radio);
     BuildTrianglesAndAddToVirtualScene(&radio);
+
+    ObjModel cake("../../data/cake/cake.obj");
+    ComputeNormals(&cake);
+    BuildTrianglesAndAddToVirtualScene(&cake);
 
 
     if ( argc > 1 )
@@ -1017,6 +1021,11 @@ int main(int argc, char* argv[])
         #define RADIO_BUTTON 31
         #define RADIO_BUTTON_RIFLED 32
         #define RADIO_BASE_PART 33
+        #define CAKE 34
+        #define CAKE_CANDLE 35
+        #define CAKE_CHERRY 36
+        #define CAKE_CHERRY_CREAM 37
+        #define CAKE_BOTTOM 38
 
         // Constantes
         #ifndef M_PI
@@ -1716,6 +1725,102 @@ int main(int argc, char* argv[])
         DrawVirtualObject("security_camera_2.001");
 
 
+        // Agora, por fim, vamos para a Sala 3
+
+        // Desenhamos o plano da parede (Frente 3R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(8.1f, -1.0f,+10.1f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 3R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+11.0f, -1.0f + fatorRepeticao, +6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 3R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+5.0f, -1.0f + fatorRepeticao, 6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 3R 3/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, 2.0f,+6.2f) * Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, -1.0f,+6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, DOOR_WALL); 
+        DrawVirtualObject("door_wall");
+
+        // Desenhamos o plano da parede (Esquerda 3R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(10.0f, -1.0f,+10.1f) * Matrix_Rotate_Y(M_PI_2) *Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 3R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(6.0f, -1.0f,+10.1f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Direita 3R)
+        model = Matrix_Translate(7.8f, -1.0f,8.15f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Esquerda 3R)
+        model = Matrix_Translate(8.2f, -1.0f,8.15f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Frente 3R)
+        model = Matrix_Translate(8.0f, -1.0f,8.35f) * Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Trás 3R)
+        model = Matrix_Translate(8.0f, -1.0f,7.95f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Cima 3R)
+        model = Matrix_Translate(8.0f, -0.2f, 8.15f) * Matrix_Scale(0.2,0.2,0.2);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, RADIO_BASE_PART);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o bolo
+        model = Matrix_Translate(8.0f, -0.1999f, 8.15f) * Matrix_Scale(0.1,0.1,0.1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        glUniform1i(g_object_id_uniform, CAKE);
+        DrawVirtualObject("Sphere.004");
+        glUniform1i(g_object_id_uniform, CAKE_CANDLE);
+        DrawVirtualObject("Sphere.002");
+        glUniform1i(g_object_id_uniform, CAKE_CHERRY);
+        DrawVirtualObject("Sphere.001");
+        glUniform1i(g_object_id_uniform, CAKE_CHERRY_CREAM);
+        DrawVirtualObject("Sphere.003");
+        glUniform1i(g_object_id_uniform, CAKE_BOTTOM);
+        DrawVirtualObject("Sphere.005");
+
+
         // Voltamos para a Sala 1 (a parte transparente precisa ser renderizada por último)
 
         glEnable(GL_BLEND);
@@ -2174,6 +2279,8 @@ void SetupCollisionAABBs()
     // Limites das salas (x,z) e altura (y), conforme mapeamento da cena
     const float sala1_min = -4.0f, sala1_max = 4.0f;
     const float sala2_min = 4.2f,  sala2_max = 12.0f;
+    float s3_xmin = 6.0f, s3_xmax = 10.0f;
+    float s3_zmin = 6.2f, s3_zmax = 10.1f;
     const float y_min = -1.0f, y_max = 3.0f;
 
     // A porta entre a Sala 1 e a Sala 2 (centrada em Z = 0)
@@ -2236,6 +2343,25 @@ void SetupCollisionAABBs()
             add_wall_slab(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t, y_min, y_max);
     };
 
+    // Chão e teto físicos da Sala 3
+    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_min - wall_t, y_min);
+    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_max, y_max + wall_t);
+
+    // Parede Lateral Direita da Sala 3 (X = 6.0)
+    add_wall_slab(s3_xmin - wall_t, s3_xmin, s3_zmin - wall_t, s3_zmax + wall_t, y_min, y_max);
+
+    // Parede Lateral Esquerda da Sala 3 (X = 10.0)
+    add_wall_slab(s3_xmax, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_min, y_max);
+
+    // Parede da Frente da Sala 3 (Z = 10.1)
+    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmax, s3_zmax + wall_t, y_min, y_max);
+
+    // Parede de Trás com Conexão/Porta da Sala 3 (Z = 6.2)
+    // Deixa o vão livre entre X = 7.4 e X = 8.6 para você passar vindo da Sala 2!
+    add_wall_slab(s3_xmin - wall_t, porta2_x - porta_meia_largura, s3_zmin - wall_t, s3_zmin, y_min, y_max);
+    add_wall_slab(porta2_x + porta_meia_largura, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmin, y_min, y_max);
+    add_wall_slab(porta2_x - porta_meia_largura, porta2_x + porta_meia_largura, s3_zmin - wall_t, s3_zmin, porta_topo_y, y_max);
+
     // Sala 1: x,z em [-4,+4] — porta na parede x=+4
     add_room_aabbs(sala1_min, sala1_max, sala1_min, sala1_max, false, true);
     
@@ -2284,6 +2410,25 @@ void SetupCollisionAABBs()
         model_door_closed
     );
 
+    // Hitboxes Físicas do Pilar e do Bolo (Sala 3)
+    // O pilar está centralizado em X=8.0 e Z=8.15.
+    // Com a escala de 0.2, os limites horizontais são exatamente:
+    // X: 8.0 - 0.2 até 8.0 + 0.2 (7.8f a 8.2f)
+    // Z: 8.15 - 0.2 até 8.15 + 0.2 (7.95f a 8.35f)
+    // E a altura vai do chão (-1.0f) até o topo do pilar (-0.2f)
+    g_CollisionAABBs.push_back({ 
+        glm::vec3(7.8f, -1.0f, 7.95f),  // Mínimo (X, Y, Z)
+        glm::vec3(8.2f, -0.2f, 8.35f)   // Máximo (X, Y, Z)
+    });
+
+    // O bolo está em cima do pilar (Y = -0.2f) com escala 0.1.
+    // X: 8.0 - 0.1 até 8.0 + 0.1 (7.9f a 8.1f)
+    // Z: 8.15 - 0.1 até 8.15 + 0.1 (8.05f a 8.25f)
+    // A altura vai do topo do pilar (-0.2f) até o topo das velas (cerca de 0.0f)
+    g_CollisionAABBs.push_back({ 
+        glm::vec3(7.9f, -0.2f, 8.05f),  // Mínimo (X, Y, Z)
+        glm::vec3(8.1f,  0.0f, 8.25f)   // Máximo (X, Y, Z)
+    });
 }
 
 // Restaura a posição e o estado de todos os elementos dinâmicos do jogo
