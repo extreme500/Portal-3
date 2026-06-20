@@ -66,3 +66,7 @@ A sua aplicação deve incluir implementação dos seguintes conceitos de Comput
     As câmeras de segurança possuem um modo de observar a sala seguindo um movimento esquerda-direita gerado por uma Curva de Bézier.
 * Animação de Movimento baseada no tempo.
     Todas as movimentações dos objetos dependem do tempo (até porque possuem gravidade/caem no chão).
+
+Funcionalidades Extras
+* Efeitos sonoros
+* Interface Gráfica (botões, etc.);
