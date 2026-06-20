@@ -242,9 +242,6 @@ void TextRendering_PrintMatrixVectorProductDivW(GLFWwindow* window, glm::mat4 M,
 
 // Funções abaixo renderizam como texto na janela OpenGL algumas matrizes e
 // outras informações do programa. Definidas após main().
-void TextRendering_ShowModelViewProjection(GLFWwindow* window, glm::mat4 projection, glm::mat4 view, glm::mat4 model, glm::vec4 p_model);
-void TextRendering_ShowEulerAngles(GLFWwindow* window);
-void TextRendering_ShowProjection(GLFWwindow* window);
 void TextRendering_ShowFramesPerSecond(GLFWwindow* window);
 void TextRendering_ShowPauseMenu(GLFWwindow* window);
 void TextRendering_ShowWinScreen(GLFWwindow* window);
@@ -3550,6 +3547,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
             // Para os créditos e garante que o ambiente volte a tocar
             g_Soloud.stop(g_CreditsMusicHandle); 
             g_Soloud.setPause(g_BGMHandle, 0);
+            g_Soloud.setPause(g_BusSFXHandle, 0);
         }
     }
 
