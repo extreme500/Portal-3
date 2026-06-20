@@ -21,5 +21,5 @@
     V = texcoords.y * fatorRepeticao;"
 
 - Ajuda com arrumar a câmera_fps com a cena e com o modelo do personagem, os pontos da curva de Bézier, a lanterna do jogador e iluminação da cena: https://gemini.google.com/share/bdbf5fb92d12 
-- Ajuda com a parede que vai junto com a porta, câmera look-at para o jogador, renderização de outros modelos (como as câmeras de seguranças e o rádio) e menu de "pause"/interface: https://gemini.google.com/share/53315a1b1e43  
-- Ajuda com colisões, lógica de carregar a caixa, lógica de pressionar o botão, reinicialização da cena, corrida, sons e músicas: https://gemini.google.com/share/50393ed3a657    
+- Ajuda com a parede que vai junto com a porta, câmera look-at para o jogador, renderização de outros modelos (como as câmeras de seguranças, o rádio e o bolo) e menu de "pause" e vitória/interface: https://share.gemini.google/2yAry1D42Mnx   
+- Ajuda com colisões, lógica de carregar a caixa, lógica de pressionar o botão, reinicialização da cena, corrida, sons e músicas: https://share.gemini.google/I0lcyr5ZhIsq 
