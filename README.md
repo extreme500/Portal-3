@@ -1,27 +1,15 @@
-# Anotações relevantes descobertas no código:
-* Texturas são tratadas no shader_fragment
-* Modelos dos objetos ficam em data e são "definidos" no código na main
-
-
 # Computação Gráfica e Visualização I (INF01047) - INF/UFRGS
 
 Este repositório contém o código base para o trabalho final. O enunciado completo do trabalho final está no Moodle:
 
 https://moodle.ufrgs.br/mod/assign/view.php?id=6018620
 
-# Agrupando coisas que iremos usar no trabalho:
+# Créditos dos Modelos Usados no Trabalho:
 Modelo do personagem
 * https://sketchfab.com/3d-models/chell-3b239db8827e49d5aabdb9aba7e18952 
   
 Modelo do cubo
 * https://sketchfab.com/3d-models/portal-cube-b67becc862054d9fab781b3e4030a1af 
-  
-Modelo da portal gun 
-* https://sketchfab.com/3d-models/portal-gun-old-eaff0d242c3542fd8f7b63a5ec49d2da (não disponível para download)
-* https://sketchfab.com/3d-models/portal-2-portal-gun-viewmodel-rig-4703b6ae8b54474cbb2f3b9cb404efa4
-* https://sketchfab.com/3d-models/portal-gun-viewmodel-official-rigged-portal-318626bf86d84d4ba110790af8120e36
-* https://sketchfab.com/3d-models/hd-portal-gun-0dca649f7ffc4e4f9cd1d9d239e7c42d
-* https://sketchfab.com/3d-models/hd-portalgun-remastered-073ba676dd364b6e96c2d0a9b9991362
 
 Modelo do botão
 * https://sketchfab.com/3d-models/button-from-portal-2-original-f1c4fcfc668a4577a30f4d1c8ed3ca9a
@@ -37,39 +25,44 @@ Modelo do rádio
 
 Modelo do bolo
 * https://plewr.itch.io/portal-cake-low-poly 
-  
-Video de gameplay 
-* https://www.youtube.com/watch?v=KZDJNJeTYQI 
 
-# Direcionando implementações:
+Texturas usadas não listadas nos modelos acima foram tiradas diretamente dos arquivos originais do jogo
+
+Musicas tiradas da Soundtrack Oficial do jogo
+* https://open.spotify.com/intl-pt/artist/7d58WZ8qQHy2Sm5p52V2NP?si=MdJqsk3rQdeLj3rMRWaJ9g 
+
+Video de gameplay 
+* https://www.youtube.com/watch?v=wA82CD9YFG0 
+
+# Como cada implementação exigida no trabalho se aplica no nosso jogo:
 A sua aplicação deve possibilitar interação em tempo real.
-* Andar pela cena, pegar cubos e atirar portais.
+* Andar pela cena e pegar cubos.
 
 A sua aplicação deve possuir algum objetivo e lógica de controle não-trivial.
-* O objetivo é completar puzzle da sala para chegar no final, colocando o cubo em botões e usando portais para se locomover.
+* O objetivo é completar o puzzle da sala para chegar no final, colocando o cubo no botão, depois de atravessar um portal para sair do cubículo de vidro. Essencialmente a fase 1 do jogo Portal.
 
 A sua aplicação deve utilizar as matrizes que vimos em aula para transformações geométricas (Model matrix), projeções (Projection matrix), e especificação do sistema de coordenadas da câmera (View matrix).
-* Transormações geométricas para mover as caixas, jogador e portais. Projeções para a renderização dos portais (literalmente um exemplo usado na aula de projeção). Como devemos ter dois tipos de câmera, uma delas pode ser a visão do personagem (câmera livre, como no jogo) e a outra pode ser uma câmera look-at travada no personagem de algum lugar da sala (ou terceira pessoa, mas acho mais complicado), lançar um portal e pegar e mover um objeto dependem da câmera do personagem. 
+* Transormações geométricas para mover a caixa, rádio e jogador. Projeções para a renderização dos portais (exemplo usado na aula de projeção).
 
 A sua aplicação deve possibilitar interação com o usuário através do mouse e do teclado.
-* Funcionalidade básica de um jogo, como será o nosso caso. Novamente, andar pela cena, pegar cubos e atirar portais.
+* Funcionalidade básica de um jogo, como será o nosso caso. Novamente, andar pela cena, pegar cubo e rádio e interface de menu.
 
 A sua aplicação deve incluir implementação dos seguintes conceitos de Computação Gráfica:
 * Objetos virtuais representados através de malhas poligonais complexas (malhas de triângulos).
-    Modelos das caixas, arma do portal e personagem podem ser malhas poligonais complexas.
+    Modelos da caixa, personagem, rádio, câmeras de segurança e bolo são malhas poligonais complexas.
 * Transformações geométricas de objetos virtuais.
     Mover as caixas e andar são transformações.
 * Controle de câmeras virtuais.
-    Como mencionado, a câmera do personagem é controlada pelo mouse, e pode existir uma outra câmera look-at travada no personagem (como se fosse pela qual a GLADOS enxerga, que costuma ficar no canto do teto).
+    Como mencionado, a câmera do personagem é controlada pelo mouse, e existe o modo de câmera segurança que contém dois tipos de visualização: uma câmera look-at travada no personagem e outra que segue um movimento de Curva de Bézier.
 * No mínimo um objeto virtual deve ser copiado com duas ou mais instâncias, isto é, utilizando duas ou mais Model matrix aplicadas ao mesmo conjunto de vértices.
-    Podemos fazer mais de um botão, sendo necessária mais de uma caixa.
+    Existe múltiplas instâncias de paredes, paredes de vidro e portas.
 * Testes de intersecção entre objetos virtuais.
-    Serão necessários testes de colisão entre personagem-parede, personagem-caixa, caixa-caixa, caixa-botão e caixa-parede ("parede" inclui chão e teto).
+    Há testes de colisão entre personagem-cenário, personagem-caixa, personagem-rádio, personagem-botão, caixa-rádio, caixa-cenário, caixa-botão e rádio-cenário (no jogo original, o rádio não serve para apertar um botão).
 * Modelos de iluminação de objetos geométricos.
-    A cena deverá conter uma ou mais fontes de iluminação (lâmpadas pelas salas) e, portanto, podemos iluminar os objetos de acordo.
+    A cena contêm diversas fontes de iluminação pelas salas, utilizando o método de iluminação de Phong.
 * Mapeamento de texturas.
-    Caixas, personagem, paredes (especialemente para diferenciar qual pode possuir um portal nela), chão, teto e outros objetos devem possuir texturas (as quais devem estar públicas na internet, ou nos próprios arquivos do jogo.
+    Caixa, personagem, rádio, paredes, chão, teto, bolo, câmeras de segurança, botão e portas possuem texturas que vieram junto com os modelos 3D baixados.
 * Curvas de Bézier.
-    A decidir que tipo de coisa exatamente iremos fazer uma movimentação por curva de bezier (pode ser uma rotação de uma câmera da sala - que vai da esquerda para direita, ou até uma torreta? ou outro objeto que fique mexendo em função sem necessariamente precisar interferir no jogo).
+    As câmeras de segurança possuem um modo de observar a sala seguindo um movimento esquerda-direita gerado por uma Curva de Bézier.
 * Animação de Movimento baseada no tempo.
-    Basicamente todas as movimentações dos objetos (além da câmera) irão depender do tempo (já que possuem gravidade e caem no chão).
+    Todas as movimentações dos objetos dependem do tempo (até porque possuem gravidade/caem no chão).

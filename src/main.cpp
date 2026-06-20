@@ -100,6 +100,7 @@ bool g_EstavaSegurandoRadio = false;
 // Handles (IDs) das instâncias vivas dos canais
 int g_BusMusicHandle = 0;
 int g_BusSFXHandle = 0;
+int g_BGMHandle = 0;
 
 // Variáveis Globais de Volume (Para a futura UI)
 float g_VolumeGlobal = 1.0f; // Volume Master (0.0 a 1.0)
@@ -111,6 +112,22 @@ bool g_IsMusicMuted = false;
 
 // Array com os 4 sons de passos
 SoLoud::Wav g_SfxWalk[4];
+
+// Controles do Menu de Pause e Estado do Jogo
+bool g_GameStarted = false; // Começa como falso (Menu Principal)
+bool g_IsPaused = true;     // O jogo já começa pausado!
+
+enum MenuState { MENU_MAIN, MENU_SETTINGS, MENU_CREDITS };
+MenuState g_MenuState = MENU_MAIN;
+
+// Variáveis para o Hover do Menu
+float g_MenuMouseX = 0.0f;
+float g_MenuMouseY = 0.0f;
+
+// Música dos Créditos e Voice Lines
+SoLoud::WavStream g_MusicWantYouGone;
+int g_CreditsMusicHandle = 0;
+int g_GladosHandle = 0; // Para tocarmos a voz só quando o jogo começar!
 
 // Cronômetro para controlar o intervalo entre os passos
 float g_FootstepTimer = 100.0f; // Começa alto para o 1º passo tocar instantaneamente
@@ -224,6 +241,7 @@ void TextRendering_ShowModelViewProjection(GLFWwindow* window, glm::mat4 project
 void TextRendering_ShowEulerAngles(GLFWwindow* window);
 void TextRendering_ShowProjection(GLFWwindow* window);
 void TextRendering_ShowFramesPerSecond(GLFWwindow* window);
+void TextRendering_ShowPauseMenu(GLFWwindow* window);
 
 // Funções callback para comunicação com o sistema operacional e interação do
 // usuário. Veja mais comentários nas definições das mesmas, abaixo.
@@ -382,14 +400,14 @@ bool g_FlashlightEnabled = false;
 
 // Modo de câmera ativa
 enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
-CameraMode g_CameraMode = CAMERA_FPS;
+CameraMode g_CameraMode = CAMERA_SECURITY;
 
 // Controle de múltiplas câmeras de segurança ---
 int g_ActiveSecurityCamera = 0; // 0 = Sala 1, 1 = Sala 2
 int g_TotalSecurityCameras = 2; //
 
 // Variável para movimentação do modelo da Câmera de Segurança
-int mov_sec_camera = 1;
+int mov_sec_camera = 2;
 
 // Altura dos olhos do jogador na câmera FPS
 const float FPS_EYE_HEIGHT = 0.3f;
@@ -426,10 +444,32 @@ int main(int argc, char* argv[])
     // funções modernas de OpenGL.
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // Criamos uma janela do sistema operacional, com 800 colunas e 600 linhas
+    /* // Criamos uma janela do sistema operacional, com 800 colunas e 600 linhas
     // de pixels, e com título "INF01047 ...".
     GLFWwindow* window;
     window = glfwCreateWindow(800, 600, "Portal 3", NULL, NULL);
+    if (!window)
+    {
+        glfwTerminate();
+        fprintf(stderr, "ERROR: glfwCreateWindow() failed.\n");
+        std::exit(EXIT_FAILURE);
+    } */
+
+    // Pega o monitor principal do usuário
+    GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+    
+    // Pega as especificações de vídeo (Resolução e Taxa de Atualização) desse monitor
+    const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+
+    // Damos algumas dicas para o GLFW respeitar as cores e os Hertz do monitor (Opcional, mas recomendado)
+    glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+    glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+    glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+    glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+
+    // Criamos a janela em Tela Cheia passando a resolução nativa e o ponteiro do monitor
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Portal 3", primaryMonitor, NULL);
+    
     if (!window)
     {
         glfwTerminate();
@@ -458,7 +498,13 @@ int main(int argc, char* argv[])
     // redimensionada, por consequência alterando o tamanho do "framebuffer"
     // (região de memória onde são armazenados os pixels da imagem).
     glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-    FramebufferSizeCallback(window, 800, 600); // Forçamos a chamada do callback acima, para definir g_ScreenRatio.
+    //FramebufferSizeCallback(window, 800, 600); // Forçamos a chamada do callback acima, para definir g_ScreenRatio.
+    // Pegamos o tamanho REAL do Framebuffer em pixels (Ignorando a escala do Windows/Mac)
+    int fb_width, fb_height;
+    glfwGetFramebufferSize(window, &fb_width, &fb_height);
+    
+    // Forçamos a chamada inicial com os pixels exatos do seu monitor!
+    FramebufferSizeCallback(window, fb_width, fb_height);
 
     // Imprimimos no terminal informações sobre a GPU do sistema
     const GLubyte *vendor      = glGetString(GL_VENDOR);
@@ -573,8 +619,8 @@ int main(int argc, char* argv[])
     // Inicializamos o código para renderização de texto.
     TextRendering_Init();
 
-    // Câmera FPS começa com cursor capturado e invisível
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    // Câmera começa com cursor visível (menu)
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
 
     // Habilitamos o Z-buffer. Veja slides 104-116 do documento Aula_09_Projecoes.pdf.
@@ -591,6 +637,7 @@ int main(int argc, char* argv[])
     // Liga os canais no motor principal E GUARDA O ID DELES!
     g_BusMusicHandle = g_Soloud.play(g_BusMusic);
     g_BusSFXHandle   = g_Soloud.play(g_BusSFX);
+    g_Soloud.setPause(g_BusSFXHandle, 1);
 
     // Aplica os volumes iniciais NA INSTÂNCIA VIVA usando o ID
     g_Soloud.setGlobalVolume(g_VolumeGlobal);
@@ -618,6 +665,8 @@ int main(int argc, char* argv[])
     musicaDeFundo.load("../../data/audio/music/Ambiente.mp3");
     musicaDeFundo.setLooping(1); // Faz repetir para sempre
 
+    g_MusicWantYouGone.load("../../data/audio/music/Want_You_Gone.mp3");
+
     // Carrega a música do rádio (ajuste o nome do arquivo se necessário)
     g_RadioMusic.load("../../data/audio/music/Radio.mp3"); 
     g_RadioMusic.setLooping(true); // Faz a música do rádio rodar em loop infinito
@@ -627,28 +676,19 @@ int main(int argc, char* argv[])
     g_RadioMusic.set3dMinMaxDistance(1.0f, 4.0f); // O som zera completamente a 10 unidades de distância
 
     // Inicia o áudio 3D dentro do canal de músicas (g_BusMusic) na posição inicial do rádio
-    g_RadioMusicHandle = g_BusMusic.play3d(g_RadioMusic, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
+    g_RadioMusicHandle = g_BusSFX.play3d(g_RadioMusic, g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z);
     
     // Define o volume inicial dele bem baixinho para ficar de fundo ambiente
-    g_Soloud.setVolume(g_RadioMusicHandle, 0.6f);
+    g_Soloud.setVolume(g_RadioMusicHandle, 0.2f);
 
     // Carrega os arquivos
     g_Glados001.load("../../data/audio/sfx/Glados_001.mp3");
     g_Glados002.load("../../data/audio/sfx/Glados_002.mp3");
 
-    // Toca a fila inteira no canal de Efeitos Sonoros
-    // (A fila se comporta como se fosse um arquivo de áudio gigante)
-    int gladosHandle = g_BusSFX.play(g_GladosDialogueQueue);
 
-    // Ajusta o volume da Fila inteira (ex: 0.7f para 70% do volume original)
-    g_Soloud.setVolume(gladosHandle, 0.7f);
-
-    // Coloca os arquivos na fila
-    g_GladosDialogueQueue.play(g_Glados001);
-    g_GladosDialogueQueue.play(g_Glados002);
 
     // Toca a música de fundo
-    int bgmHandle = g_BusMusic.play(musicaDeFundo);
+    g_BGMHandle = g_BusMusic.play(musicaDeFundo);
 
     // CONFIGURAÇÃO DE ATENUAÇÃO 3D (VOLUME A DISTÂNCIA)
     // O parâmetro LINEAR_DISTANCE força o volume a cair até 0% no MaxDistance.
@@ -706,22 +746,22 @@ int main(int argc, char* argv[])
             velocidade_atual = velocidade * 1.6f; // 60% mais rápido ao correr
         }
 
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS && g_GameStarted)
         {
             desired_dx += fwd_x * velocidade_atual * deltaTime;
             desired_dz += fwd_z * velocidade_atual * deltaTime;
         }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS && g_GameStarted)
         {
             desired_dx -= fwd_x * velocidade_atual * deltaTime;
             desired_dz -= fwd_z * velocidade_atual * deltaTime;
         }
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS && g_GameStarted)
         {
             desired_dx -= right_x * velocidade_atual * deltaTime;
             desired_dz -= right_z * velocidade_atual * deltaTime;
         }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS && g_GameStarted)
         {
             desired_dx += right_x * velocidade_atual * deltaTime;
             desired_dz += right_z * velocidade_atual * deltaTime;
@@ -733,7 +773,7 @@ int main(int argc, char* argv[])
         // ela é pressionada, não enquanto fica segurada) e só permitimos pular
         // quando o jogador está apoiado no chão (sem pulo duplo no ar)
         bool spacePressedNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround())
+        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround() && g_GameStarted)
         {
             // Aplica a força física para cima
             g_PlayerVelocityY = FORCA_PULO;
@@ -1884,6 +1924,9 @@ int main(int argc, char* argv[])
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
         TextRendering_ShowFramesPerSecond(window);
+
+        //Imprimos na tela o Menu de Pause
+        TextRendering_ShowPauseMenu(window);
 
         // O framebuffer onde OpenGL executa as operações de renderização não
         // é o mesmo que está sendo mostrado para o usuário, caso contrário
@@ -3159,12 +3202,124 @@ void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
         // variável abaixo para false.
         g_MiddleMouseButtonPressed = false;
     }
+
+    // Interação com o Menu de Pause
+    if (g_IsPaused && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+    {
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+
+        float mx = (float)(2.0 * xpos / width - 1.0);
+        float my = (float)(1.0 - 2.0 * ypos / height);
+
+        auto IsClicked = [&](float x_min, float x_max, float y_min, float y_max) {
+            return (mx >= x_min && mx <= x_max && my >= y_min && my <= y_max);
+        };
+
+        float left_x = -0.85f;
+
+        if (g_MenuState == MENU_MAIN) 
+        {
+            if (IsClicked(left_x, -0.4f, 0.05f, 0.15f)) { // Jogar
+                // É a primeira vez clicando em jogar?
+                if (!g_GameStarted) {
+                    g_GameStarted = true;
+                    mov_sec_camera = 1; // A câmera para de rodar e fixa no jogador!
+                    // Libera os efeitos sonoros do mundo!
+                    g_Soloud.setPause(g_BusSFXHandle, 0);
+                    // Toca a fila da GLaDOS no canal de SFX!
+                    g_GladosHandle = g_BusSFX.play(g_GladosDialogueQueue);
+                    g_Soloud.setVolume(g_GladosHandle, 0.7f);
+                    // Coloca os arquivos na fila
+                    g_GladosDialogueQueue.play(g_Glados001);
+                    g_GladosDialogueQueue.play(g_Glados002);
+                }
+
+                g_IsPaused = false;
+                g_CameraMode = CAMERA_FPS;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            }
+            if (IsClicked(left_x, -0.4f, -0.10f, 0.0f)) { // Reiniciar
+                // Só funciona se o jogo já tiver começado!
+                if (g_GameStarted) {
+                    ResetScene(); 
+                    g_IsPaused = false;
+                    g_CameraMode = CAMERA_FPS;
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                    glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
+                }
+            }
+            if (IsClicked(left_x, -0.2f, -0.25f, -0.15f)) { // Configurações
+                g_MenuState = MENU_SETTINGS;
+            }
+            if (IsClicked(left_x, -0.4f, -0.40f, -0.30f)) { // Créditos
+                g_MenuState = MENU_CREDITS;
+                // PAUSA a música ambiente (1 = pausado)
+                g_Soloud.setPause(g_BGMHandle, 1); 
+                g_Soloud.setPause(g_BusSFXHandle, 1);
+                g_CreditsMusicHandle = g_BusMusic.play(g_MusicWantYouGone);
+            }
+            if (IsClicked(left_x, -0.5f, -0.55f, -0.45f)) { // Sair
+                glfwSetWindowShouldClose(window, GL_TRUE);
+            }
+        }
+        else if (g_MenuState == MENU_SETTINGS)
+        {
+            if (IsClicked(left_x, -0.4f, -0.65f, -0.55f)) { // Voltar
+                g_MenuState = MENU_MAIN;
+                g_IsMusicMuted = false;
+            }
+            
+            float bar_x = -0.2f; // X base dos botões < e >
+
+            // Global
+            if (IsClicked(bar_x, bar_x+0.1f, 0.25f, 0.35f)) g_VolumeGlobal -= 0.1f;
+            if (IsClicked(bar_x+0.6f, bar_x+0.7f, 0.25f, 0.35f)) g_VolumeGlobal += 0.1f;
+            if (g_VolumeGlobal < 0.0f) g_VolumeGlobal = 0.0f;
+            if (g_VolumeGlobal > 1.0f) g_VolumeGlobal = 1.0f;
+            
+            // Música
+            if (IsClicked(bar_x, bar_x+0.1f, 0.05f, 0.15f)) g_VolumeMusic -= 0.1f;
+            if (IsClicked(bar_x+0.6f, bar_x+0.7f, 0.05f, 0.15f)) g_VolumeMusic += 0.1f;
+            if (g_VolumeMusic < 0.0f) g_VolumeMusic = 0.0f;
+            if (g_VolumeMusic > 1.0f) g_VolumeMusic = 1.0f;
+            
+            // Sfx
+            if (IsClicked(bar_x, bar_x+0.1f, -0.15f, -0.05f)) g_VolumeSFX -= 0.1f;
+            if (IsClicked(bar_x+0.6f, bar_x+0.7f, -0.15f, -0.05f)) g_VolumeSFX += 0.1f;
+            if (g_VolumeSFX < 0.0f) g_VolumeSFX = 0.0f;
+            if (g_VolumeSFX > 1.0f) g_VolumeSFX = 1.0f;
+
+            // Aplica instantaneamente no motor SoLoud
+            g_Soloud.setGlobalVolume(g_VolumeGlobal);
+            g_Soloud.setVolume(g_BusMusicHandle, g_VolumeMusic);
+            g_Soloud.setVolume(g_BusSFXHandle, g_VolumeSFX);
+        }
+        else if (g_MenuState == MENU_CREDITS)
+        {
+            if (IsClicked(left_x, -0.4f, -0.65f, -0.55f)) { // Voltar
+                g_MenuState = MENU_MAIN;
+                g_Soloud.stop(g_CreditsMusicHandle); // Para a música dos créditos
+                // DESPAUSA a música ambiente (0 = tocando)
+                g_Soloud.setPause(g_BGMHandle, 0); 
+                g_Soloud.setPause(g_BusSFXHandle, 0);
+            }
+        }
+    }
 }
 
 // Função callback chamada sempre que o usuário movimentar o cursor do mouse em
 // cima da janela OpenGL.
 void CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
+    // Pega a posição do mouse e converte pra NDC pro Menu usar!
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+    g_MenuMouseX = (float)(2.0 * xpos / width - 1.0);
+    g_MenuMouseY = (float)(1.0 - 2.0 * ypos / height);
+    
     // No modo FPS o cursor está capturado: qualquer movimento vira a câmera
     if (g_CameraMode == CAMERA_FPS)
     {
@@ -3184,7 +3339,7 @@ void CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
         return;
     }
 
-    if (g_LeftMouseButtonPressed)
+    if (g_LeftMouseButtonPressed && g_GameStarted)
     {
         // Deslocamento do cursor do mouse em x e y de coordenadas de tela!
         float dx = xpos - g_LastCursorPosX;
@@ -3210,7 +3365,7 @@ void CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
         g_LastCursorPosY = ypos;
     }
 
-    if (g_RightMouseButtonPressed)
+    if (g_RightMouseButtonPressed && g_GameStarted)
     {
         // Deslocamento do cursor do mouse em x e y de coordenadas de tela!
         float dx = xpos - g_LastCursorPosX;
@@ -3226,7 +3381,7 @@ void CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
         g_LastCursorPosY = ypos;
     }
 
-    if (g_MiddleMouseButtonPressed)
+    if (g_MiddleMouseButtonPressed && g_GameStarted)
     {
         // Deslocamento do cursor do mouse em x e y de coordenadas de tela!
         float dx = xpos - g_LastCursorPosX;
@@ -3271,53 +3426,6 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     // laboratórios. Deve ser sempre o primeiro comando desta função KeyCallback().
     Correcao_KeyCallback(key, action, mod);
     // =======================
-
-    // Se o usuário pressionar a tecla ESC, fechamos a janela.
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, GL_TRUE);
-    
-    // O código abaixo implementa a seguinte lógica:
-    //   Se apertar tecla X       então g_AngleX += delta;
-    //   Se apertar tecla shift+X então g_AngleX -= delta;
-    //   Se apertar tecla Y       então g_AngleY += delta;
-    //   Se apertar tecla shift+Y então g_AngleY -= delta;
-    //   Se apertar tecla Z       então g_AngleZ += delta;
-    //   Se apertar tecla shift+Z então g_AngleZ -= delta;
-
-    float delta = 3.141592 / 16; // 22.5 graus, em radianos.
-
-    if (key == GLFW_KEY_X && action == GLFW_PRESS)
-    {
-        g_AngleX += (mod & GLFW_MOD_SHIFT) ? -delta : delta;
-    }
-
-    if (key == GLFW_KEY_Y && action == GLFW_PRESS)
-    {
-        g_AngleY += (mod & GLFW_MOD_SHIFT) ? -delta : delta;
-    }
-    if (key == GLFW_KEY_Z && action == GLFW_PRESS)
-    {
-        g_AngleZ += (mod & GLFW_MOD_SHIFT) ? -delta : delta;
-    }
-
-    // Se o usuário apertar a tecla espaço, resetamos os ângulos de Euler para zero.
-    if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
-    {
-        g_AngleX = 0.0f;
-        g_AngleY = 0.0f;
-        g_AngleZ = 0.0f;
-        g_ForearmAngleX = 0.0f;
-        g_ForearmAngleZ = 0.0f;
-        g_TorsoPositionX = 0.0f;
-        g_TorsoPositionY = 0.0f;
-    }
-
-    // Se o usuário apertar a tecla H, fazemos um "toggle" do texto informativo mostrado na tela.
-    if (key == GLFW_KEY_H && action == GLFW_PRESS)
-    {
-        g_ShowInfoText = !g_ShowInfoText;
-    }
-
     
     // Se o usuário apertar a tecla R, reinicia a cena inteira.
     if (key == GLFW_KEY_R && action == GLFW_PRESS && g_CameraMode == CAMERA_FPS)
@@ -3333,22 +3441,31 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         fflush(stdout);
     }
 
-
-    // Tecla C alterna entre câmera FPS e câmera de segurança
-    if (key == GLFW_KEY_C && action == GLFW_PRESS)
+    // Tecla Esc abre o Menu de Pause
+    // Menu de Pause Híbrido (Câmera de Segurança)
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
-        if (g_CameraMode == CAMERA_FPS)
-        {
+        
+        // Se o jogo ainda não começou, o ESC não faz NADA!
+        if (!g_GameStarted) return;
+
+        g_IsPaused = !g_IsPaused;
+        
+        if (g_IsPaused) {
+            // Entra no pause: Muda pra câmera de segurança e mostra o mouse
+            g_MenuState = MENU_MAIN;
             g_IsHoldingBox = false;
             g_IsHoldingRadio = false;
             g_CameraMode = CAMERA_SECURITY;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        }
-        else
-        {
+        } else {
+            // Sai do pause: Volta pro jogador, esconde mouse, e reseta os créditos
             g_CameraMode = CAMERA_FPS;
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY);
+            glfwGetCursorPos(window, &g_LastCursorPosX, &g_LastCursorPosY); 
+            // Para os créditos e garante que o ambiente volte a tocar
+            g_Soloud.stop(g_CreditsMusicHandle); 
+            g_Soloud.setPause(g_BGMHandle, 0);
         }
     }
 
@@ -3465,36 +3582,6 @@ void TextRendering_ShowModelViewProjection(
     TextRendering_PrintMatrixVectorProductMoreDigits(window, viewport_mapping, p_ndc, -1.0f, 1.0f-26*pad, 1.0f);
 }
 
-// Escrevemos na tela os ângulos de Euler definidos nas variáveis globais
-// g_AngleX, g_AngleY, e g_AngleZ.
-void TextRendering_ShowEulerAngles(GLFWwindow* window)
-{
-    if ( !g_ShowInfoText )
-        return;
-
-    float pad = TextRendering_LineHeight(window);
-
-    char buffer[80];
-    snprintf(buffer, 80, "Euler Angles rotation matrix = Z(%.2f)*Y(%.2f)*X(%.2f)\n", g_AngleZ, g_AngleY, g_AngleX);
-
-    TextRendering_PrintString(window, buffer, -1.0f+pad/10, -1.0f+2*pad/10, 1.0f);
-}
-
-// Escrevemos na tela qual matriz de projeção está sendo utilizada.
-void TextRendering_ShowProjection(GLFWwindow* window)
-{
-    if ( !g_ShowInfoText )
-        return;
-
-    float lineheight = TextRendering_LineHeight(window);
-    float charwidth = TextRendering_CharWidth(window);
-
-    if ( g_UsePerspectiveProjection )
-        TextRendering_PrintString(window, "Perspective", 1.0f-13*charwidth, -1.0f+2*lineheight/10, 1.0f);
-    else
-        TextRendering_PrintString(window, "Orthographic", 1.0f-13*charwidth, -1.0f+2*lineheight/10, 1.0f);
-}
-
 // Escrevemos na tela o número de quadros renderizados por segundo (frames per
 // second).
 void TextRendering_ShowFramesPerSecond(GLFWwindow* window)
@@ -3529,6 +3616,90 @@ void TextRendering_ShowFramesPerSecond(GLFWwindow* window)
     float charwidth = TextRendering_CharWidth(window);
 
     TextRendering_PrintString(window, buffer, 1.0f-(numchars + 1)*charwidth, 1.0f-lineheight, 1.0f);
+}
+
+void TextRendering_ShowPauseMenu(GLFWwindow* window)
+{
+    if (!g_IsPaused) return;
+
+    // Função para o hover: Se o mouse passar em cima, o texto cresce um pouco e "acende"
+    auto GetHoverScale = [&](float x_min, float x_max, float y_min, float y_max, float base_scale) {
+        if (g_MenuMouseX >= x_min && g_MenuMouseX <= x_max && g_MenuMouseY >= y_min && g_MenuMouseY <= y_max)
+            return base_scale * 1.2f; 
+        return base_scale;
+    };
+
+    // Função para gerar a barra de volume visual
+    auto GetVolumeBar = [](float vol) -> std::string {
+        int bars = (int)(vol * 10.0f + 0.1f); // Arredonda seguro (0 a 10)
+        std::string s = "[";
+        for (int i = 0; i < 10; i++) {
+            s += (i < bars ? '|' : ' ');
+        }
+        s += "] " + std::to_string(bars * 10) + "%";
+        return s;
+    };
+
+    // Usamos um X fixo para alinhar tudo à esquerda, igual Portal!
+    float left_x = -0.85f;
+
+    if (g_MenuState == MENU_MAIN) 
+    {
+        // Título gigante simulando a logo
+        TextRendering_PrintString(window, "PORTAL 3", left_x, 0.4f, 3.0f);
+        
+        // Botões alinhados à esquerda
+        TextRendering_PrintString(window, "Jogar", left_x, 0.1f, GetHoverScale(left_x, -0.4f, 0.05f, 0.15f, 1.5f));
+
+        if (g_GameStarted) {
+            TextRendering_PrintString(window, "Reiniciar", left_x, -0.05f, GetHoverScale(left_x, -0.4f, -0.10f, 0.0f, 1.5f));
+        }
+
+        TextRendering_PrintString(window, "Configuracoes", left_x, -0.2f, GetHoverScale(left_x, -0.2f, -0.25f, -0.15f, 1.5f));
+        TextRendering_PrintString(window, "Creditos", left_x, -0.35f, GetHoverScale(left_x, -0.4f, -0.40f, -0.30f, 1.5f));
+        TextRendering_PrintString(window, "Sair", left_x, -0.5f, GetHoverScale(left_x, -0.5f, -0.55f, -0.45f, 1.5f));
+    } 
+    else if (g_MenuState == MENU_SETTINGS) 
+    {
+        TextRendering_PrintString(window, "CONFIGURACOES", left_x, 0.6f, 2.0f);
+        
+        // TEXTOS FIXOS
+        TextRendering_PrintString(window, "Volume Global", left_x, 0.3f, 1.2f);
+        TextRendering_PrintString(window, "Volume Musica", left_x, 0.1f, 1.2f);
+        TextRendering_PrintString(window, "Volume Efeitos", left_x, -0.1f, 1.2f);
+
+        // BOTÕES INTERATIVOS (< e >) E AS BARRAS
+        // Para alinhar, colocamos as barras num X fixo mais à direita (-0.2f)
+        float bar_x = -0.2f;
+
+        TextRendering_PrintString(window, "<", bar_x, 0.3f, GetHoverScale(bar_x, bar_x+0.1f, 0.25f, 0.35f, 1.2f));
+        TextRendering_PrintString(window, GetVolumeBar(g_VolumeGlobal), bar_x + 0.1f, 0.3f, 1.2f);
+        TextRendering_PrintString(window, ">", bar_x + 0.6f, 0.3f, GetHoverScale(bar_x+0.6f, bar_x+0.7f, 0.25f, 0.35f, 1.2f));
+
+        TextRendering_PrintString(window, "<", bar_x, 0.1f, GetHoverScale(bar_x, bar_x+0.1f, 0.05f, 0.15f, 1.2f));
+        TextRendering_PrintString(window, GetVolumeBar(g_VolumeMusic), bar_x + 0.1f, 0.1f, 1.2f);
+        TextRendering_PrintString(window, ">", bar_x + 0.6f, 0.1f, GetHoverScale(bar_x+0.6f, bar_x+0.7f, 0.05f, 0.15f, 1.2f));
+
+        TextRendering_PrintString(window, "<", bar_x, -0.1f, GetHoverScale(bar_x, bar_x+0.1f, -0.15f, -0.05f, 1.2f));
+        TextRendering_PrintString(window, GetVolumeBar(g_VolumeSFX), bar_x + 0.1f, -0.1f, 1.2f);
+        TextRendering_PrintString(window, ">", bar_x + 0.6f, -0.1f, GetHoverScale(bar_x+0.6f, bar_x+0.7f, -0.15f, -0.05f, 1.2f));
+
+        // MAPEAMENTO MOSTRADO COMO TEXTO CORRIDO EMBAIXO
+        TextRendering_PrintString(window, "Mover: WASD | Pular: Espaco | Correr: Shift | Pegar: E | Lanterna: F | Mutar Musicas: M", left_x, -0.32f, 1.0f);
+        TextRendering_PrintString(window, "Trocar Camera de Seguranca: <-/-> | Trocar Modo das Cameras de Seguranca: 1/2", left_x, -0.4f, 1.0f);
+
+        TextRendering_PrintString(window, "Voltar", left_x, -0.6f, GetHoverScale(left_x, -0.4f, -0.65f, -0.55f, 1.5f));
+    }
+    else if (g_MenuState == MENU_CREDITS) 
+    {
+        TextRendering_PrintString(window, "CREDITOS", left_x, 0.5f, 2.0f);
+        TextRendering_PrintString(window, "Desenvolvedores: Gabriel Pieruccini Knopp e Tobias Cadona Marion", left_x, 0.2f, 1.5f);
+        TextRendering_PrintString(window, "Todos modelos usados listados no README.md", left_x, 0.0f, 1.5f);
+        TextRendering_PrintString(window, "Trabalho inspirado nas obras Portal e Portal 2 da Valve", left_x, -0.2f, 1.5f);
+        TextRendering_PrintString(window, "Obrigado por jogar!", left_x, -0.4f, 1.5f);
+        
+        TextRendering_PrintString(window, "Voltar", left_x, -0.6f, GetHoverScale(left_x, -0.4f, -0.65f, -0.55f, 1.5f));
+    }
 }
 
 // Função para debugging: imprime no terminal todas informações de um modelo
