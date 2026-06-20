@@ -48,6 +48,7 @@
 // Headers locais, definidos na pasta "include/"
 #include "utils.h"
 #include "matrices.h"
+#include "portal.h"
 #include "bezier.h"
 
 
@@ -86,6 +87,7 @@ glm::vec3 g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f); // Posição inicial d
 SoLoud::WavStream g_RadioMusic;                            // Stream para músicas longas
 int g_RadioMusicHandle = 0;                                // ID da instância tocando
 float g_RadioVelocityY = 0.0f; // Controla a gravidade do rádio
+glm::vec3 g_RadioVel = glm::vec3(0.0f); // momento horizontal (xz) carregado por portais
 float g_RadioAngleY = 0.0f;    // Controla a rotação para encarar o jogador
 bool g_IsHoldingRadio = false; // Estado de carregar o rádio
 
@@ -207,6 +209,8 @@ void ComputeNormals(ObjModel* model); // Computa normais de um ObjModel, caso n�
 void LoadShadersFromFiles(); // Carrega os shaders de vértice e fragmento, criando um programa de GPU
 void LoadTextureImage(const char* filename, bool deveRepetir); // Função que carrega imagens de textura
 void DrawVirtualObject(const char* object_name); // Desenha um objeto armazenado em g_VirtualScene
+void SetObjectId(GLint object_id); // Define o object_id no shader e vincula as texturas do objeto
+void BindTexturesForObject(GLint object_id); // Vincula às unidades 0/1 as texturas usadas pelo object_id
 GLuint LoadShader_Vertex(const char* filename);   // Carrega um vertex shader
 GLuint LoadShader_Fragment(const char* filename); // Carrega um fragment shader
 void LoadShader(const char* filename, GLuint shader_id); // Função utilizada pelas duas acima
@@ -321,6 +325,8 @@ GLint g_model_uniform;
 GLint g_view_uniform;
 GLint g_projection_uniform;
 GLint g_object_id_uniform;
+GLint g_portal_pass_uniform; // 0 = stencil/cor, 1 = moldura
+GLint g_clipplane_uniform; // plano de recorte oblíquo (portais)
 GLint g_bbox_min_uniform;
 GLint g_bbox_max_uniform;
 
@@ -332,6 +338,16 @@ GLint g_flashlight_on_uniform;
 // Número de texturas carregadas pela função LoadTextureImage()
 GLuint g_NumLoadedTextures = 0;
 
+// IDs das texturas e samplers carregados, indexados na mesma ordem em que são
+// chamados em LoadTextureImage() (TextureImage0, TextureImage1, ...). Como o
+// macOS limita o fragment shader a 16 samplers, não mantemos todas as texturas
+// vinculadas simultaneamente: guardamos os IDs aqui e vinculamos, por objeto,
+// apenas as necessárias às unidades 0 (difusa) e 1 (auxiliar). Veja
+// BindTexturesForObject().
+#define MAX_TEXTURES 64
+GLuint g_TextureID[MAX_TEXTURES];
+GLuint g_SamplerID[MAX_TEXTURES];
+
 // Variável para a posição global do personagem (e, consequentemente, da câmera)
 glm::vec4 Pos_Player = glm::vec4(.0f,.0f,-2.0f,1.0f);
 float velocidade = 3; // Velocidade do personagem para andar
@@ -339,6 +355,7 @@ float velocidade = 3; // Velocidade do personagem para andar
 // Controle da Caixa estilo Portal
 glm::vec3 g_BoxPosition = glm::vec3(11.0f, .0f, 5.0f);
 float g_BoxVelocityY = 0.0f; // Controla a gravidade da caixa
+glm::vec3 g_BoxVel = glm::vec3(0.0f); // momento horizontal (xz) carregado por portais
 float g_BoxAngleY = 0.0f;    // Controla a rotação para ela "encarar" o jogador
 bool g_IsHoldingBox = false;
 bool g_EWasPressed = false;
@@ -371,6 +388,7 @@ const float COLLISION_SKIN = 0.02f;
 const float GRAVIDADE  = -9.8f; // aceleração da gravidade, em unidades/s²
 const float FORCA_PULO =  4.5f; // velocidade vertical inicial ao pular, em unidades/s
 float g_PlayerVelocityY = 0.0f; // velocidade vertical atual do jogador
+glm::vec3 g_PlayerPortalVel = glm::vec3(0.0f); // momento horizontal (xz) ao sair de um portal
 bool  g_SpaceWasPressed = false; // estado da tecla espaço no frame anterior (detecção de borda de subida, evita pulo contínuo ao segurar a tecla)
 
 // Caixa delimitadora axis-aligned em coordenadas de mundo, usada nos testes
@@ -421,6 +439,695 @@ const float SECURITY_CAM_SWEEP_PERIOD = 14.0f;
 // Última posição conhecida do cursor (usada para calcular deltas de movimento)
 double g_LastCursorPosX, g_LastCursorPosY;
 
+// object_id e constantes geométricas (movidos para escopo de arquivo para
+// que DrawScene(), definida acima de main(), também os enxergue).
+        // Constantes
+        #define SPHERE 0
+        #define BUNNY  1
+        #define PLANE  2
+        #define PLAYER_HEAD 3
+        #define PLAYER_EYE 4
+        #define PLAYER_TORSO 5
+        #define PLAYER_LEGS 6
+        #define PLAYER_HAIR 7
+        #define CUBE_003 8
+        #define CUBE_CIRCLE1 9
+        #define CUBE_002 10
+        #define CUBE 11
+        #define CUBE_CIRCLE2 12
+        #define CUBE_CIRCLE3 13
+        #define BUTTON 14
+        #define BUTTON_001 15
+        #define DOOR 16
+        #define WALL 17
+        #define FLOOR 18
+        #define CEILING 19
+        #define GLASS 20
+        #define WALL_2 21
+        #define WALL_4 22
+        #define SEC_CAM 23
+        #define DOOR_WALL 24
+        #define RADIO_SHELL 25
+        #define RADIO_MAIN 26
+        #define RADIO_GRID 27
+        #define RADIO_SCREEN 28
+        #define RADIO_LIGHT 29
+        #define RADIO_ANTENNA 30
+        #define RADIO_BUTTON 31
+        #define RADIO_BUTTON_RIFLED 32
+        #define RADIO_BASE_PART 33
+        #define CAKE 34
+        #define CAKE_CANDLE 35
+        #define CAKE_CHERRY 36
+        #define CAKE_CHERRY_CREAM 37
+        #define CAKE_BOTTOM 38
+
+        // Constantes
+        #ifndef M_PI
+        #define M_PI   3.14159265358979323846
+        #endif
+
+        #ifndef M_PI_2
+        #define M_PI_2 1.57079632679489661923
+        #endif
+
+// Câmera atualmente sendo renderizada (real ou virtual de um portal).
+// Usada por billboards como o modelo da câmera de segurança.
+glm::vec4 g_RenderCameraViewVector = glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
+
+// Desenha TODA a geometria do mundo (jogador, salas, objetos). Foi extraída
+// do loop principal para poder ser re-renderizada pela câmera virtual dos
+// portais (efeito see-through). Apenas emite draw calls: não altera estado de
+// jogo/física. As matrizes view/projection já devem estar nos uniforms.
+void DrawScene()
+{
+    glm::mat4 model = Matrix_Identity();
+
+        //Renderização do Personagem do Jogador
+        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(PLAYER_HEAD);
+        DrawVirtualObject("player_model_head");
+        SetObjectId(PLAYER_EYE);
+        DrawVirtualObject("player_model_left_eye");
+        DrawVirtualObject("player_model_right_eye");
+        SetObjectId(PLAYER_TORSO);
+        DrawVirtualObject("player_model_torso");
+        SetObjectId(PLAYER_LEGS);
+        DrawVirtualObject("player_model_legs");
+        SetObjectId(PLAYER_HAIR);
+        DrawVirtualObject("player_model_hair");
+
+        
+        // Cena Da 1R
+        
+        // Desenhamos o plano do chão (1R)
+        float fatorRepeticao = 4.0f;
+        model = Matrix_Translate(0.0f,-1.0f,0.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(FLOOR);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano do teto (1R)
+        model = Matrix_Translate(0.0f,3.0f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(CEILING);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 1R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(.0f, -1.0f + fatorRepeticao,-4.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 1R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(.0f, -1.0f + fatorRepeticao, +4.0f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 1R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(-4.0f, -1.0f + fatorRepeticao, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+        
+        // Desenhamos o plano da parede (Esquerda 1R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 1R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, -3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 1R 3/3) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+4.0f, 2.0f,0.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+4.0f, -1.0f, .0f) * Matrix_Rotate_Y(3 * M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(DOOR_WALL); 
+        DrawVirtualObject("door_wall");
+
+        // Desenhamos o modelo da porta (Aberta 1R)
+        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5f,1.5f,1.5f);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(DOOR);
+        DrawVirtualObject("portal_door_combined_model_2");
+
+        // Desenhamos o rádio 
+        model = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) * Matrix_Rotate_Y(g_RadioAngleY) * Matrix_Scale(1.0/9.0f, 1.0f/9.0, 1.0f/9.0); // Coordenada do radio
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        SetObjectId(RADIO_SHELL);
+        DrawVirtualObject("Shell"); // Nome do objeto no .obj
+        SetObjectId(RADIO_MAIN);
+        DrawVirtualObject("Radio"); // Nome após separar no Blender
+        SetObjectId(RADIO_GRID);
+        DrawVirtualObject("Radio.001"); // Nome após separar no Blender
+        SetObjectId(RADIO_SCREEN);
+        DrawVirtualObject("Radio.002"); // Nome após separar no Blender
+        SetObjectId(RADIO_LIGHT);
+        DrawVirtualObject("Light_Indicator");
+        DrawVirtualObject("Light.001"); // Desenha ambas as luzes com a mesma textura
+        SetObjectId(RADIO_ANTENNA);
+        DrawVirtualObject("Antenna");
+        SetObjectId(RADIO_BUTTON);
+        DrawVirtualObject("Button"); // Nome após separar no Blender
+        SetObjectId(RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("Button.001"); // Nome após separar no Blender
+        SetObjectId(RADIO_BASE_PART);
+        DrawVirtualObject("Base");
+
+        // Desenhamos a câmera que segue o jogador/curva de Bézier (1R)
+        // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
+        glFrontFace(GL_CW);
+        model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * Matrix_Scale(-1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        SetObjectId(SEC_CAM);
+        DrawVirtualObject("security_camera_2");
+        glFrontFace(GL_CCW);
+        // Depois, desenhamos a "câmera", que se movimenta
+        glm::vec3 sec_cam_pos = glm::vec3(-3.8f, 2.8f, -3.8f);
+        glm::vec3 sec_cam_front;
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            if (mov_sec_camera == 1) 
+            {
+                // MODO 1: Lente mira no jogador
+                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
+                
+                // Se o jogador chegar muito perto da parede da câmera (que está em -3.8),
+                // nós "travamos" o alvo da câmera em uma distância segura para não atravessar a parede.
+                // Calculamos a distância do jogador para a câmera, ignorando o Y
+                float dist_x = std::abs(target_player.x - sec_cam_pos.x);
+                float dist_z = std::abs(target_player.z - sec_cam_pos.z);
+                float dist = std::max(dist_x, dist_z);
+
+                // Mapeamos a distância para um fator de 0.0 (perto) a 1.0 (longe)
+                // Se estiver a 1.0 de distância ou menos, fator = 0.0. Se estiver a 1.5 ou mais, fator = 1.0.
+                float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+
+                // Interpolação linear (Lerp): o limite varia suavemente entre -1.38 e -2.8
+                float limite_parede = glm::mix(-1.3f, -2.8f, t);
+
+                // Aplicação do limite calculado
+                if (target_player.x < limite_parede) target_player.x = limite_parede;
+                if (target_player.z < limite_parede) target_player.z = limite_parede;
+
+                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+            }
+            else if (mov_sec_camera == 2)
+            {
+                // MODO 2: Lente faz o Bézier
+                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
+                float ping = raw < 1.0f ? raw : 2.0f - raw;
+
+                const glm::vec4 wp[4] = {
+                    glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
+                    glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
+                    glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
+                    glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
+                };
+
+                int seg = (int)(ping * 3.0f);
+                if (seg > 2) seg = 2;
+                float local_t = ping * 3.0f - (float)seg;
+                if (local_t > 1.0f) local_t = 1.0f;
+
+                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+
+                glm::vec4 from = wp[seg];
+                glm::vec4 to   = wp[seg + 1];
+                glm::vec4 lookat_target = BezierCubic(
+                    from,
+                    from + (to - from) * (1.0f / 3.0f),
+                    from + (to - from) * (2.0f / 3.0f),
+                    to,
+                    smooth_t
+                );
+                
+                // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
+                glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
+                sec_cam_front = glm::normalize(bezier_dir);
+            }
+        }
+        else // CAMERA_SECURITY
+        {
+            // Se estamos enxergando PELA câmera de segurança, o modelo físico 
+            // e a câmera global olham exatamente para a mesma direção.
+            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
+        }
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+        glm::mat4 rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        SetObjectId(SEC_CAM);
+        DrawVirtualObject("security_camera_2.001");
+
+        // Cena Da 2R
+
+        // Desenhamos o plano do chão 1/2 (2R)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(+8.0f,-1.0f,.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(FLOOR);
+        DrawVirtualObject("the_plane");
+
+         // Desenhamos o plano do chão 2/2 (2R)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(+8.0f,-1.0f,+8.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(FLOOR);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano do teto 1/2 (2R)
+        model = Matrix_Translate(+8.0f,3.0f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(CEILING);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano do teto 2/2 (2R)
+        model = Matrix_Translate(+8.0f,3.0f,8.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(CEILING);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 2R 1/4) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 2R 2/4) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, -3.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 2R 3/4) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+4.2f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 2R 4/4) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, 9.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o modelo da parede que vai na porta (Aberta 2R-1R)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+4.2f, -1.0f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(DOOR_WALL); 
+        DrawVirtualObject("door_wall");
+        
+        // Desenhamos o plano da parede (Diagonal 2R) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+11.0f, -1.0f+ fatorRepeticao,-2.7f) * Matrix_Rotate_Y(-M_PI_2/2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 2R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(8.0f, -1.0f + fatorRepeticao,-4.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 2R 1/2) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(12.0f, -1.0f + fatorRepeticao, 0.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 2R 2/2) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(12.0f, -1.0f + fatorRepeticao, +8.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 2R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+11.0f, -1.0f + fatorRepeticao, +6.0f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 2R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+5.0f, -1.0f + fatorRepeticao, 6.0f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Frente 2R 3/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, 2.0f,+6.0f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, -1.0f,+6.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(DOOR_WALL); 
+        DrawVirtualObject("door_wall");
+
+        // Desenhamos o modelo do cubo
+        model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) * Matrix_Rotate_Y(g_BoxAngleY) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(CUBE_003);
+        DrawVirtualObject("Cube.003");
+        DrawVirtualObject("Cube.002");
+        SetObjectId(CUBE_CIRCLE1);
+        DrawVirtualObject("Circle");
+        SetObjectId(CUBE_CIRCLE2);
+        DrawVirtualObject("Circle.002");
+        SetObjectId(CUBE_CIRCLE3);
+        DrawVirtualObject("Circle.003");
+        SetObjectId(CUBE);
+        DrawVirtualObject("Cube");
+
+        // Verifica se tem algum objeto em cima do botão
+        g_IsButtonPressed = IsButtonTriggered();
+
+        // Desenhamos o modelo da porta (Fechada ou Aberta 2R-3R)
+        model = Matrix_Translate(8.0f, -1.0f,+6.1f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.5f,1.5f,1.5f);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(DOOR);
+        if (g_IsButtonPressed) {
+        // Desenha o modelo da porta ABERTA
+            DrawVirtualObject("portal_door_combined_model_2"); 
+        } else {
+            // Desenha o modelo da porta FECHADA
+            DrawVirtualObject("portal_door_combined_model_1");
+        }
+
+        // Desenhamos o modelo do botão
+        float y_offset = g_IsButtonPressed ? -0.05f : 0.0f;
+        model = Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(BUTTON);
+        DrawVirtualObject("portal_button_reduced_2");
+        model = Matrix_Translate(9.0f, -1.0f + y_offset,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(BUTTON_001);
+        DrawVirtualObject("portal_button_reduced_2.001");
+
+
+        // Desenhamos a câmera que segue o jogador/curva de Bézier (2R)
+        // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
+        glFrontFace(GL_CW);
+        model = Matrix_Translate(8.0f, 2.8f, 5.8f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(-1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        SetObjectId(SEC_CAM);
+        DrawVirtualObject("security_camera_2");
+        glFrontFace(GL_CCW);
+        // Depois, desenhamos a "câmera", que se movimenta
+        sec_cam_pos = glm::vec3(8.0f, 2.8f, 5.8f);
+        if (g_CameraMode == CAMERA_FPS)
+        {
+            if (mov_sec_camera == 1) 
+            {
+                // --- MODO 1: Lente mira no jogador (Câmera 2) ---
+                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
+                
+                // Calculamos o quão de lado o jogador está em relação à câmera (eixo X)
+                // Posição da câmera 2 no eixo X é 8.0f
+                float dist_x = std::abs(target_player.x - 8.0f);
+
+                // Mapeamos essa distância lateral para o nosso fator 't' (0.0 a 1.0)
+                // Se ele estiver até 1.0 unidade pro lado, t = 0 (Perto)
+                // Se ele estiver a 3.0 unidades ou mais pro lado, t = 1 (Longe nos cantos)
+                float t = glm::clamp((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
+
+                // Interpolação linear (Lerp): 
+                // Se t=0 (jogador na frente), o limite de Z é 5.6 (quase debaixo da câmera).
+                // Se t=1 (jogador nos cantos), forçamos o limite de Z para 4.5 (empurra a visão pro meio da sala).
+                float limite_parede_z = glm::mix(1.5f, 7.5f, t);
+
+                // Aplica o limite! Como a câmera olha para valores negativos de Z (fundo da sala),
+                // nós não deixamos o alvo da câmera ultrapassar o limite seguro.
+                if (target_player.z > limite_parede_z) {
+                    target_player.z = limite_parede_z;
+                }
+
+                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+            }
+            else if (mov_sec_camera == 2)
+            {
+                // MODO 2: Lente faz o Bézier
+                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
+                float ping = raw < 1.0f ? raw : 2.0f - raw;
+
+                const glm::vec4 wp[4] = {
+                    glm::vec4( 4.5f,  1.0f,  2.0f, 1.0f), // 0: Perto Esquerda
+                    glm::vec4(11.5f,  1.0f, -3.5f, 1.0f), // 1: Longe Direita
+                    glm::vec4( 4.5f, -0.8f, -3.5f, 1.0f), // 2: Longe Esquerda
+                    glm::vec4(11.5f, -0.8f,  2.0f, 1.0f), // 3: Perto Direita
+                };
+
+                int seg = (int)(ping * 3.0f);
+                if (seg > 2) seg = 2;
+                float local_t = ping * 3.0f - (float)seg;
+                if (local_t > 1.0f) local_t = 1.0f;
+
+                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
+
+                glm::vec4 from = wp[seg];
+                glm::vec4 to   = wp[seg + 1];
+                glm::vec4 lookat_target = BezierCubic(
+                    from,
+                    from + (to - from) * (1.0f / 3.0f),
+                    from + (to - from) * (2.0f / 3.0f),
+                    to,
+                    smooth_t
+                );
+                
+                // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
+                glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
+                sec_cam_front = glm::normalize(bezier_dir);
+            }
+        }
+        else // CAMERA_SECURITY
+        {
+            // Se estamos enxergando PELA câmera de segurança, o modelo físico 
+            // e a câmera global olham exatamente para a mesma direção.
+            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
+        }
+        up = glm::vec3(0.0f, 1.0f, 0.0f);
+        rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        model = Matrix_Translate(8.0f, 2.8f, 5.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
+        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+        SetObjectId(SEC_CAM);
+        DrawVirtualObject("security_camera_2.001");
+
+
+        // Agora, por fim, vamos para a Sala 3
+
+        // Desenhamos o plano da parede (Frente 3R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(8.1f, -1.0f,+10.1f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 3R 1/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+11.0f, -1.0f + fatorRepeticao, +6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 3R 2/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 2.0f;
+        model = Matrix_Translate(+5.0f, -1.0f + fatorRepeticao, 6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_2);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Trás 3R 3/3) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, 2.0f,+6.2f) * Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(8.0f, -1.0f,+6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(DOOR_WALL); 
+        DrawVirtualObject("door_wall");
+
+        // Desenhamos o plano da parede (Esquerda 3R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(10.0f, -1.0f,+10.1f) * Matrix_Rotate_Y(M_PI_2) *Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Direita 3R) (repetida fatorRepeticao vezes)
+        fatorRepeticao = 4.0f;
+        model = Matrix_Translate(6.0f, -1.0f,+10.1f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL_4);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Direita 3R)
+        model = Matrix_Translate(7.8f, -1.0f,8.15f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Esquerda 3R)
+        model = Matrix_Translate(8.2f, -1.0f,8.15f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Frente 3R)
+        model = Matrix_Translate(8.0f, -1.0f,8.35f) * Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Trás 3R)
+        model = Matrix_Translate(8.0f, -1.0f,7.95f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(RADIO_BUTTON_RIFLED);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o pilar que segura o bolo (Cima 3R)
+        model = Matrix_Translate(8.0f, -0.2f, 8.15f) * Matrix_Scale(0.2,0.2,0.2);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(RADIO_BASE_PART);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o bolo
+        model = Matrix_Translate(8.0f, -0.1999f, 8.15f) * Matrix_Scale(0.1,0.1,0.1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(CAKE);
+        DrawVirtualObject("Sphere.004");
+        SetObjectId(CAKE_CANDLE);
+        DrawVirtualObject("Sphere.002");
+        SetObjectId(CAKE_CHERRY);
+        DrawVirtualObject("Sphere.001");
+        SetObjectId(CAKE_CHERRY_CREAM);
+        DrawVirtualObject("Sphere.003");
+        SetObjectId(CAKE_BOTTOM);
+        DrawVirtualObject("Sphere.005");
+
+
+        // Voltamos para a Sala 1 (a parte transparente precisa ser renderizada por último)
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        // Desenhamos o plano da parede (Esquerda 1/2) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 2/2) (repetida fatorRepeticao vezes) 
+        fatorRepeticao = 1.0f;
+        model = Matrix_Translate(+1.0f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Frente 1/2)
+        model = Matrix_Translate(+.0f,.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Frente 2/2)
+        model = Matrix_Translate(+.0f,2.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Trás 1/2)
+        model = Matrix_Translate(+.0f,.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Trás 2/2)
+        model = Matrix_Translate(+.0f,2.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Direita 1/2)
+        model = Matrix_Translate(-1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(GLASS);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano das paredes de vidro (Direita 2/2)
+        model = Matrix_Translate(-1.0f,2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(GLASS);
+        DrawVirtualObject("the_plane");
+
+
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+}
+
+// --- Portais ---------------------------------------------------------------
+PortalPair          g_Portals;        // par de portais (azul + laranja) — Sala 1
+PortalPair          g_Portals2;       // segundo par (teto + parede) — Sala 2
+PortalPair          g_Portals3;       // terceiro par (fundo + esquerda) — Sala 2
+PortalCrossingState g_PlayerCrossing; // estado de travessia do jogador (par 1)
+PortalCrossingState g_BoxCrossing;    // estado de travessia da caixa    (par 1)
+PortalCrossingState g_RadioCrossing;  // estado de travessia do rádio   (par 1)
+PortalCrossingState g_PlayerCrossing2;// estado de travessia do jogador (par 2)
+PortalCrossingState g_BoxCrossing2;   // estado de travessia da caixa    (par 2)
+PortalCrossingState g_RadioCrossing2; // estado de travessia do rádio   (par 2)
+PortalCrossingState g_PlayerCrossing3;// estado de travessia do jogador (par 3)
+PortalCrossingState g_BoxCrossing3;   // estado de travessia da caixa    (par 3)
+PortalCrossingState g_RadioCrossing3; // estado de travessia do rádio   (par 3)
+
+// Raio de colisão de cada entidade (usado no offset frontal p/ detecção de travessia).
+// Deve refletir o raio do cilindro (jogador) ou metade da largura da AABB (caixa/rádio).
+static const float PLAYER_BODY_RADIUS = 0.25f;
+static const float BOX_BODY_RADIUS    = 0.3f;
+static const float RADIO_BODY_RADIUS  = 0.2f;
+
+// Thunks: permitem ao módulo de portais chamar a renderização definida aqui.
+static void Portal_DrawScene() { DrawScene(); }
+static void Portal_DrawPlane() { DrawVirtualObject("the_plane"); }
+
 int main(int argc, char* argv[])
 {
     // Inicializamos a biblioteca GLFW, utilizada para criar uma janela do
@@ -446,6 +1153,9 @@ int main(int argc, char* argv[])
     // Pedimos para utilizar o perfil "core", isto é, utilizaremos somente as
     // funções modernas de OpenGL.
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    // Stencil buffer (8 bits) necessário para o efeito see-through dos portais.
+    glfwWindowHint(GLFW_STENCIL_BITS, 8);
 
     /* // Criamos uma janela do sistema operacional, com 800 colunas e 600 linhas
     // de pixels, e com título "INF01047 ...".
@@ -619,6 +1329,72 @@ int main(int argc, char* argv[])
     // botão), uma única vez, já que a geometria estática não muda em runtime.
     SetupCollisionAABBs();
 
+    // --- Instanciação dos portais (API intuitiva: ponto + normal da parede) ---
+    // Um par vinculado em paredes opostas e paralelas da Sala 1 (Z=-4 e Z=+4),
+    // ambos centrados no eixo X da sala. O azul está na parede da frente,
+    // o laranja na parede dos fundos, um de frente para o outro.
+    g_Portals = PortalPair::create(
+        Portal::onWall(glm::vec3(0.0f, 1.0f, -3.98f), glm::vec3(0.0f, 0.0f,  1.0f)), // azul  — parede frontal (Z=-4), normal +Z
+        Portal::onWall(glm::vec3(0.0f, 1.0f,  3.98f), glm::vec3(0.0f, 0.0f, -1.0f)), // laranja — parede traseira (Z=+4), normal -Z
+        1.2f, 2.0f);
+
+    g_PlayerCrossing.bodyRadius = PLAYER_BODY_RADIUS;
+    g_BoxCrossing.bodyRadius    = BOX_BODY_RADIUS;
+    g_RadioCrossing.bodyRadius  = RADIO_BODY_RADIUS;
+
+    // --- Segundo par de portais (Sala 2) ---
+    // Um no teto (Y=+3) e outro na parede direita (X=+12), ambos na Sala 2,
+    // centrados em X=8/Z=1 (teto) e X=12/Z=1 (parede).
+    {
+        Portal ceiling;
+        ceiling.center = glm::vec3(8.0f, 2.70f, 1.0f);
+        ceiling.normal = glm::vec3(0.0f, -1.0f, 0.0f);
+        ceiling.up     = glm::vec3(0.0f, 0.0f, 1.0f);
+
+        Portal rightWall;
+        rightWall.center = glm::vec3(11.98f, 1.0f, 1.0f);
+        rightWall.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
+        rightWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        g_Portals2 = PortalPair::create(ceiling, rightWall, 1.2f, 2.0f);
+    }
+
+    g_PlayerCrossing2.bodyRadius = PLAYER_BODY_RADIUS;
+    g_BoxCrossing2.bodyRadius    = BOX_BODY_RADIUS;
+    g_RadioCrossing2.bodyRadius  = RADIO_BODY_RADIUS;
+
+    // --- Terceiro par de portais (Sala 2, paredes adjacentes) ---
+    // Um na parede do fundo (Z=-4) e outro na parede esquerda (X=+4.2),
+    // nas proximidades do canto esquerdo-fundo da Sala 2.
+    {
+        Portal backWall;
+        backWall.center = glm::vec3(6.5f, 1.0f, -3.98f);
+        backWall.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+        backWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        Portal leftWall;
+        leftWall.center = glm::vec3(4.23f, 1.0f, -1.5f);
+        leftWall.normal = glm::vec3(1.0f, 0.0f, 0.0f);
+        leftWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        g_Portals3 = PortalPair::create(backWall, leftWall, 1.2f, 2.0f);
+    }
+
+    g_PlayerCrossing3.bodyRadius = PLAYER_BODY_RADIUS;
+    g_BoxCrossing3.bodyRadius    = BOX_BODY_RADIUS;
+    g_RadioCrossing3.bodyRadius  = RADIO_BODY_RADIUS;
+
+    PortalGLContext pctx;
+    pctx.modelUniform      = g_model_uniform;
+    pctx.viewUniform       = g_view_uniform;
+    pctx.projectionUniform = g_projection_uniform;
+    pctx.clipPlaneUniform  = g_clipplane_uniform;
+    pctx.objectIdUniform   = g_object_id_uniform;
+    pctx.portalPassUniform = g_portal_pass_uniform;
+    pctx.drawScene         = Portal_DrawScene;
+    pctx.drawPlane         = Portal_DrawPlane;
+    Portal_SetGLContext(pctx);
+
     // Inicializamos o código para renderização de texto.
     TextRendering_Init();
 
@@ -772,6 +1548,11 @@ int main(int argc, char* argv[])
             desired_dz += right_z * velocidade_atual * deltaTime;
         }
 
+        // Momento horizontal carregado ao sair de um portal (decai com o tempo).
+        desired_dx += g_PlayerPortalVel.x * deltaTime;
+        desired_dz += g_PlayerPortalVel.z * deltaTime;
+        g_PlayerPortalVel *= std::exp(-deltaTime * 3.0f);
+
         TryMovePlayer(desired_dx, desired_dz);
 
         // Pulo: detectamos a borda de subida da tecla espaço (o instante em que
@@ -808,6 +1589,46 @@ int main(int argc, char* argv[])
         g_PlayerVelocityY += GRAVIDADE * deltaTime;
         TryMovePlayerVertical(g_PlayerVelocityY * deltaTime);
 
+        // --- Portais: travessia do jogador (SNAP) ---
+        // Monta a velocidade 3D atual (horizontal pretendida + vertical), deixa o
+        // portal transformá-la e devolve posição, olhar e velocidade do outro lado.
+        if (g_GameStarted && deltaTime > 1e-5f)
+        {
+            glm::vec3 ppos = glm::vec3(Pos_Player);
+            glm::vec3 pvel(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
+            if (g_Portals.teleportPlayer(g_PlayerCrossing, ppos, pvel,
+                                         g_CameraTheta, g_CameraPhi))
+            {
+                Pos_Player = glm::vec4(ppos, 1.0f);
+                g_PlayerVelocityY = pvel.y;
+                g_PlayerPortalVel = glm::vec3(pvel.x, 0.0f, pvel.z);
+            }
+            // Segundo par (Sala 2)
+            {
+                glm::vec3 ppos2 = glm::vec3(Pos_Player);
+                glm::vec3 pvel2(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
+                if (g_Portals2.teleportPlayer(g_PlayerCrossing2, ppos2, pvel2,
+                                             g_CameraTheta, g_CameraPhi))
+                {
+                    Pos_Player = glm::vec4(ppos2, 1.0f);
+                    g_PlayerVelocityY = pvel2.y;
+                    g_PlayerPortalVel = glm::vec3(pvel2.x, 0.0f, pvel2.z);
+                }
+            }
+            // Terceiro par (Sala 2)
+            {
+                glm::vec3 ppos3 = glm::vec3(Pos_Player);
+                glm::vec3 pvel3(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
+                if (g_Portals3.teleportPlayer(g_PlayerCrossing3, ppos3, pvel3,
+                                             g_CameraTheta, g_CameraPhi))
+                {
+                    Pos_Player = glm::vec4(ppos3, 1.0f);
+                    g_PlayerVelocityY = pvel3.y;
+                    g_PlayerPortalVel = glm::vec3(pvel3.x, 0.0f, pvel3.z);
+                }
+            }
+        }
+
 
         // Definimos a cor do "fundo" do framebuffer como branco.  Tal cor é
         // definida como coeficientes RGBA: Red, Green, Blue, Alpha; isto é:
@@ -819,7 +1640,7 @@ int main(int argc, char* argv[])
 
         // "Pintamos" todos os pixels do framebuffer com a cor definida acima,
         // e também resetamos todos os pixels do Z-buffer (depth buffer).
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // Pedimos para a GPU utilizar o programa de GPU criado acima (contendo
         // os shaders de vértice e fragmentos).
@@ -1031,55 +1852,6 @@ int main(int argc, char* argv[])
         glUniformMatrix4fv(g_view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
         glUniformMatrix4fv(g_projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
 
-        // Constantes
-        #define SPHERE 0
-        #define BUNNY  1
-        #define PLANE  2
-        #define PLAYER_HEAD 3
-        #define PLAYER_EYE 4
-        #define PLAYER_TORSO 5
-        #define PLAYER_LEGS 6
-        #define PLAYER_HAIR 7
-        #define CUBE_003 8
-        #define CUBE_CIRCLE1 9
-        #define CUBE_002 10
-        #define CUBE 11
-        #define CUBE_CIRCLE2 12
-        #define CUBE_CIRCLE3 13
-        #define BUTTON 14
-        #define BUTTON_001 15
-        #define DOOR 16
-        #define WALL 17
-        #define FLOOR 18
-        #define CEILING 19
-        #define GLASS 20
-        #define WALL_2 21
-        #define WALL_4 22
-        #define SEC_CAM 23
-        #define DOOR_WALL 24
-        #define RADIO_SHELL 25
-        #define RADIO_MAIN 26
-        #define RADIO_GRID 27
-        #define RADIO_SCREEN 28
-        #define RADIO_LIGHT 29
-        #define RADIO_ANTENNA 30
-        #define RADIO_BUTTON 31
-        #define RADIO_BUTTON_RIFLED 32
-        #define RADIO_BASE_PART 33
-        #define CAKE 34
-        #define CAKE_CANDLE 35
-        #define CAKE_CHERRY 36
-        #define CAKE_CHERRY_CREAM 37
-        #define CAKE_BOTTOM 38
-
-        // Constantes
-        #ifndef M_PI
-        #define M_PI   3.14159265358979323846
-        #endif
-
-        #ifndef M_PI_2
-        #define M_PI_2 1.57079632679489661923
-        #endif
 
         // Defina uniformes no shader (supondo que você buscou os IDs com glGetUniformLocation)
         // Dentro do loop, perto de onde você envia view e projection:
@@ -1172,7 +1944,12 @@ int main(int argc, char* argv[])
                 finalPos = testPos;
             }
             g_BoxPosition = finalPos;
-            
+
+            // Enquanto segurada, mantemos o estado de travessia "zerado" para não
+            // disparar um teleporte espúrio ao soltar perto de um portal.
+            g_BoxCrossing.initialized = false;
+            g_BoxCrossing2.initialized = false;
+
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
             g_BoxAngleY = g_CameraTheta;
 
@@ -1201,6 +1978,53 @@ int main(int argc, char* argv[])
             } else {
                 g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
             }
+
+            // Momento horizontal vindo de um portal: integra xz com colisão e atrito.
+            if (std::fabs(g_BoxVel.x) + std::fabs(g_BoxVel.z) > 1e-4f)
+            {
+                glm::vec3 ch = g_BoxPosition;
+                ch.x += g_BoxVel.x * deltaTime;
+                ch.z += g_BoxVel.z * deltaTime;
+                if (!BoxCollidesAt(ch)) g_BoxPosition = ch;
+                else { g_BoxVel.x = 0.0f; g_BoxVel.z = 0.0f; }
+                g_BoxVel *= std::exp(-deltaTime * 1.5f);
+            }
+
+            // Travessia de portal (SNAP) para a caixa: transforma posição,
+            // velocidade (vertical + horizontal) e rotação.
+            if (g_GameStarted)
+            {
+                glm::vec3 bvel(g_BoxVel.x, g_BoxVelocityY, g_BoxVel.z);
+                float byaw = g_BoxAngleY;
+                if (g_Portals.teleportIfCrossed(g_BoxCrossing, g_BoxPosition, &bvel, &byaw))
+                {
+                    g_BoxVelocityY = bvel.y;
+                    g_BoxVel = glm::vec3(bvel.x, 0.0f, bvel.z);
+                    g_BoxAngleY = byaw;
+                }
+                // Segundo par (Sala 2)
+                {
+                    glm::vec3 bvel2 = bvel;
+                    float byaw2 = g_BoxAngleY;
+                    if (g_Portals2.teleportIfCrossed(g_BoxCrossing2, g_BoxPosition, &bvel2, &byaw2))
+                    {
+                        g_BoxVelocityY = bvel2.y;
+                        g_BoxVel = glm::vec3(bvel2.x, 0.0f, bvel2.z);
+                        g_BoxAngleY = byaw2;
+                    }
+                }
+                // Terceiro par (Sala 2)
+                {
+                    glm::vec3 bvel3 = bvel;
+                    float byaw3 = g_BoxAngleY;
+                    if (g_Portals3.teleportIfCrossed(g_BoxCrossing3, g_BoxPosition, &bvel3, &byaw3))
+                    {
+                        g_BoxVelocityY = bvel3.y;
+                        g_BoxVel = glm::vec3(bvel3.x, 0.0f, bvel3.z);
+                        g_BoxAngleY = byaw3;
+                    }
+                }
+            }
         }
 
         // ================================================================
@@ -1227,7 +2051,13 @@ int main(int argc, char* argv[])
                 finalPos = testPos;
             }
             g_RadioPosition = finalPos;
-            
+
+            // Enquanto segurado, mantém o estado de travessia "zerado" para não
+            // disparar um teleporte espúrio ao soltar perto de um portal.
+            g_RadioCrossing.initialized = false;
+            g_RadioCrossing2.initialized = false;
+            g_RadioCrossing3.initialized = false;
+
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
             g_RadioAngleY = g_CameraTheta;
 
@@ -1255,6 +2085,52 @@ int main(int argc, char* argv[])
                 g_RadioPosition.y = candidatePos.y;
             } else {
                 g_RadioVelocityY = 0.0f; // Bateu, zera a velocidade de queda
+            }
+
+            // Momento horizontal vindo de portais (rádio)
+            if (std::fabs(g_RadioVel.x) + std::fabs(g_RadioVel.z) > 1e-4f)
+            {
+                glm::vec3 ch = g_RadioPosition;
+                ch.x += g_RadioVel.x * deltaTime;
+                ch.z += g_RadioVel.z * deltaTime;
+                if (!RadioCollidesAt(ch)) g_RadioPosition = ch;
+                else { g_RadioVel.x = 0.0f; g_RadioVel.z = 0.0f; }
+                g_RadioVel *= std::exp(-deltaTime * 1.5f);
+            }
+
+            // Travessia de portal (SNAP) para o rádio
+            if (g_GameStarted)
+            {
+                glm::vec3 rvel(g_RadioVel.x, g_RadioVelocityY, g_RadioVel.z);
+                float ryaw = g_RadioAngleY;
+                if (g_Portals.teleportIfCrossed(g_RadioCrossing, g_RadioPosition, &rvel, &ryaw))
+                {
+                    g_RadioVelocityY = rvel.y;
+                    g_RadioVel = glm::vec3(rvel.x, 0.0f, rvel.z);
+                    g_RadioAngleY = ryaw;
+                }
+                // Segundo par (Sala 2)
+                {
+                    glm::vec3 rvel2 = rvel;
+                    float ryaw2 = g_RadioAngleY;
+                    if (g_Portals2.teleportIfCrossed(g_RadioCrossing2, g_RadioPosition, &rvel2, &ryaw2))
+                    {
+                        g_RadioVelocityY = rvel2.y;
+                        g_RadioVel = glm::vec3(rvel2.x, 0.0f, rvel2.z);
+                        g_RadioAngleY = ryaw2;
+                    }
+                }
+                // Terceiro par (Sala 2)
+                {
+                    glm::vec3 rvel3 = rvel;
+                    float ryaw3 = g_RadioAngleY;
+                    if (g_Portals3.teleportIfCrossed(g_RadioCrossing3, g_RadioPosition, &rvel3, &ryaw3))
+                    {
+                        g_RadioVelocityY = rvel3.y;
+                        g_RadioVel = glm::vec3(rvel3.x, 0.0f, rvel3.z);
+                        g_RadioAngleY = ryaw3;
+                    }
+                }
             }
         }
 
@@ -1346,605 +2222,26 @@ int main(int argc, char* argv[])
         // As paredes (naturalmente/1.0f de fatorRepeticao) tem 2.0f de altura
         // 1R corresponde à Sala 1, e 2R corresponde à Sala 2
 
-        //Renderização do Personagem do Jogador
-        model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) * Matrix_Rotate_Y(g_CameraTheta + M_PI) * Matrix_Scale(1/55.00,1/55.00,1/55.00);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, PLAYER_HEAD);
-        DrawVirtualObject("player_model_head");
-        glUniform1i(g_object_id_uniform, PLAYER_EYE);
-        DrawVirtualObject("player_model_left_eye");
-        DrawVirtualObject("player_model_right_eye");
-        glUniform1i(g_object_id_uniform, PLAYER_TORSO);
-        DrawVirtualObject("player_model_torso");
-        glUniform1i(g_object_id_uniform, PLAYER_LEGS);
-        DrawVirtualObject("player_model_legs");
-        glUniform1i(g_object_id_uniform, PLAYER_HAIR);
-        DrawVirtualObject("player_model_hair");
+        // Câmera atual (usada por billboards). Os portais sobrescrevem isto com
+        // a câmera virtual ao renderizar suas vistas.
+        g_RenderCameraViewVector = camera_view_vector;
 
-        
-        // Cena Da 1R
-        
-        // Desenhamos o plano do chão (1R)
-        float fatorRepeticao = 4.0f;
-        model = Matrix_Translate(0.0f,-1.0f,0.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, FLOOR);
-        DrawVirtualObject("the_plane");
+        // Desenha o mundo. (renderViews() re-renderiza DrawScene via câmera virtual.)
+        DrawScene();
 
-        // Desenhamos o plano do teto (1R)
-        model = Matrix_Translate(0.0f,3.0f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CEILING);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Frente 1R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(.0f, -1.0f + fatorRepeticao,-4.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Trás 1R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(.0f, -1.0f + fatorRepeticao, +4.0f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Direita 1R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(-4.0f, -1.0f + fatorRepeticao, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-        
-        // Desenhamos o plano da parede (Esquerda 1R 1/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Esquerda 1R 2/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+4.0f, -1.0f + fatorRepeticao, -3.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Esquerda 1R 3/3) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+4.0f, 2.0f,0.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+4.0f, -1.0f, .0f) * Matrix_Rotate_Y(3 * M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR_WALL); 
-        DrawVirtualObject("door_wall");
-
-        // Desenhamos o modelo da porta (Aberta 1R)
-        model = Matrix_Translate(+4.1f, -1.0f, .0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Scale(1.5f,1.5f,1.5f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR);
-        DrawVirtualObject("portal_door_combined_model_2");
-
-        // Desenhamos o rádio 
-        model = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) * Matrix_Rotate_Y(g_RadioAngleY) * Matrix_Scale(1.0/9.0f, 1.0f/9.0, 1.0f/9.0); // Coordenada do radio
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, RADIO_SHELL);
-        DrawVirtualObject("Shell"); // Nome do objeto no .obj
-        glUniform1i(g_object_id_uniform, RADIO_MAIN);
-        DrawVirtualObject("Radio"); // Nome após separar no Blender
-        glUniform1i(g_object_id_uniform, RADIO_GRID);
-        DrawVirtualObject("Radio.001"); // Nome após separar no Blender
-        glUniform1i(g_object_id_uniform, RADIO_SCREEN);
-        DrawVirtualObject("Radio.002"); // Nome após separar no Blender
-        glUniform1i(g_object_id_uniform, RADIO_LIGHT);
-        DrawVirtualObject("Light_Indicator");
-        DrawVirtualObject("Light.001"); // Desenha ambas as luzes com a mesma textura
-        glUniform1i(g_object_id_uniform, RADIO_ANTENNA);
-        DrawVirtualObject("Antenna");
-        glUniform1i(g_object_id_uniform, RADIO_BUTTON);
-        DrawVirtualObject("Button"); // Nome após separar no Blender
-        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
-        DrawVirtualObject("Button.001"); // Nome após separar no Blender
-        glUniform1i(g_object_id_uniform, RADIO_BASE_PART);
-        DrawVirtualObject("Base");
-
-        // Desenhamos a câmera que segue o jogador/curva de Bézier (1R)
-        // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
-        glFrontFace(GL_CW);
-        model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * Matrix_Scale(-1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, SEC_CAM);
-        DrawVirtualObject("security_camera_2");
-        glFrontFace(GL_CCW);
-        // Depois, desenhamos a "câmera", que se movimenta
-        glm::vec3 sec_cam_pos = glm::vec3(-3.8f, 2.8f, -3.8f);
-        glm::vec3 sec_cam_front;
-        if (g_CameraMode == CAMERA_FPS)
+        // Portais: re-renderiza a cena pela câmera virtual recortada na janela de
+        // cada portal (efeito see-through) e desenha suas superfícies/molduras.
+        if (g_GameStarted && g_CameraMode == CAMERA_FPS)
         {
-            if (mov_sec_camera == 1) 
-            {
-                // MODO 1: Lente mira no jogador
-                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
-                
-                // Se o jogador chegar muito perto da parede da câmera (que está em -3.8),
-                // nós "travamos" o alvo da câmera em uma distância segura para não atravessar a parede.
-                // Calculamos a distância do jogador para a câmera, ignorando o Y
-                float dist_x = std::abs(target_player.x - sec_cam_pos.x);
-                float dist_z = std::abs(target_player.z - sec_cam_pos.z);
-                float dist = std::max(dist_x, dist_z);
+            g_Portals.renderViews(view, projection, 1, 0);
+            g_Portals.renderSurfaces();
 
-                // Mapeamos a distância para um fator de 0.0 (perto) a 1.0 (longe)
-                // Se estiver a 1.0 de distância ou menos, fator = 0.0. Se estiver a 1.5 ou mais, fator = 1.0.
-                float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+            g_Portals2.renderViews(view, projection, 1, 2);
+            g_Portals2.renderSurfaces();
 
-                // Interpolação linear (Lerp): o limite varia suavemente entre -1.38 e -2.8
-                float limite_parede = glm::mix(-1.3f, -2.8f, t);
-
-                // Aplicação do limite calculado
-                if (target_player.x < limite_parede) target_player.x = limite_parede;
-                if (target_player.z < limite_parede) target_player.z = limite_parede;
-
-                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
-            }
-            else if (mov_sec_camera == 2)
-            {
-                // MODO 2: Lente faz o Bézier
-                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
-                float ping = raw < 1.0f ? raw : 2.0f - raw;
-
-                const glm::vec4 wp[4] = {
-                    glm::vec4( 3.8f,  1.0f, -3.8f, 1.0f), 
-                    glm::vec4(-3.8f,  1.0f,  3.8f, 1.0f), 
-                    glm::vec4( 3.8f, -0.8f, -3.8f, 1.0f), 
-                    glm::vec4(-3.8f, -0.8f,  3.8f, 1.0f), 
-                };
-
-                int seg = (int)(ping * 3.0f);
-                if (seg > 2) seg = 2;
-                float local_t = ping * 3.0f - (float)seg;
-                if (local_t > 1.0f) local_t = 1.0f;
-
-                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
-
-                glm::vec4 from = wp[seg];
-                glm::vec4 to   = wp[seg + 1];
-                glm::vec4 lookat_target = BezierCubic(
-                    from,
-                    from + (to - from) * (1.0f / 3.0f),
-                    from + (to - from) * (2.0f / 3.0f),
-                    to,
-                    smooth_t
-                );
-                
-                // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
-                glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
-                sec_cam_front = glm::normalize(bezier_dir);
-            }
+            g_Portals3.renderViews(view, projection, 1, 4);
+            g_Portals3.renderSurfaces();
         }
-        else // CAMERA_SECURITY
-        {
-            // Se estamos enxergando PELA câmera de segurança, o modelo físico 
-            // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(camera_view_vector));
-        }
-        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-        glm::mat4 rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
-        model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, SEC_CAM);
-        DrawVirtualObject("security_camera_2.001");
-
-        // Cena Da 2R
-
-        // Desenhamos o plano do chão 1/2 (2R)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(+8.0f,-1.0f,.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, FLOOR);
-        DrawVirtualObject("the_plane");
-
-         // Desenhamos o plano do chão 2/2 (2R)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(+8.0f,-1.0f,+8.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, FLOOR);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano do teto 1/2 (2R)
-        model = Matrix_Translate(+8.0f,3.0f,0.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CEILING);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano do teto 2/2 (2R)
-        model = Matrix_Translate(+8.0f,3.0f,8.0f) * Matrix_Rotate_X(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CEILING);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Direita 2R 1/4) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, +3.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Direita 2R 2/4) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, -3.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Direita 2R 3/4) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+4.2f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Direita 2R 4/4) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(+4.2f, -1.0f + fatorRepeticao, 9.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o modelo da parede que vai na porta (Aberta 2R-1R)
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+4.2f, -1.0f, .0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR_WALL); 
-        DrawVirtualObject("door_wall");
-        
-        // Desenhamos o plano da parede (Diagonal 2R) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+11.0f, -1.0f+ fatorRepeticao,-2.7f) * Matrix_Rotate_Y(-M_PI_2/2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Trás 2R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(8.0f, -1.0f + fatorRepeticao,-4.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Esquerda 2R 1/2) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(12.0f, -1.0f + fatorRepeticao, 0.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Esquerda 2R 2/2) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(12.0f, -1.0f + fatorRepeticao, +8.0f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Frente 2R 1/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+11.0f, -1.0f + fatorRepeticao, +6.0f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Frente 2R 2/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+5.0f, -1.0f + fatorRepeticao, 6.0f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Frente 2R 3/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(8.0f, 2.0f,+6.0f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(8.0f, -1.0f,+6.0f) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR_WALL); 
-        DrawVirtualObject("door_wall");
-
-        // Desenhamos o modelo do cubo
-        model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) * Matrix_Rotate_Y(g_BoxAngleY) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CUBE_003);
-        DrawVirtualObject("Cube.003");
-        DrawVirtualObject("Cube.002");
-        glUniform1i(g_object_id_uniform, CUBE_CIRCLE1);
-        DrawVirtualObject("Circle");
-        glUniform1i(g_object_id_uniform, CUBE_CIRCLE2);
-        DrawVirtualObject("Circle.002");
-        glUniform1i(g_object_id_uniform, CUBE_CIRCLE3);
-        DrawVirtualObject("Circle.003");
-        glUniform1i(g_object_id_uniform, CUBE);
-        DrawVirtualObject("Cube");
-
-        // Verifica se tem algum objeto em cima do botão
-        g_IsButtonPressed = IsButtonTriggered();
-
-        // Desenhamos o modelo da porta (Fechada ou Aberta 2R-3R)
-        model = Matrix_Translate(8.0f, -1.0f,+6.1f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.5f,1.5f,1.5f);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR);
-        if (g_IsButtonPressed) {
-        // Desenha o modelo da porta ABERTA
-            DrawVirtualObject("portal_door_combined_model_2"); 
-        } else {
-            // Desenha o modelo da porta FECHADA
-            DrawVirtualObject("portal_door_combined_model_1");
-        }
-
-        // Desenhamos o modelo do botão
-        float y_offset = g_IsButtonPressed ? -0.05f : 0.0f;
-        model = Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, BUTTON);
-        DrawVirtualObject("portal_button_reduced_2");
-        model = Matrix_Translate(9.0f, -1.0f + y_offset,-1.0f)*Matrix_Scale(2.0,2.0,2.0);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, BUTTON_001);
-        DrawVirtualObject("portal_button_reduced_2.001");
-
-
-        // Desenhamos a câmera que segue o jogador/curva de Bézier (2R)
-        // Primeiro, desenhamos o suporte que é estático na parede (para ficar mais visualmente agradável, vamos "espelhar" o modelo, sendo necessário mudar a renderização da geometria)
-        glFrontFace(GL_CW);
-        model = Matrix_Translate(8.0f, 2.8f, 5.8f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(-1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, SEC_CAM);
-        DrawVirtualObject("security_camera_2");
-        glFrontFace(GL_CCW);
-        // Depois, desenhamos a "câmera", que se movimenta
-        sec_cam_pos = glm::vec3(8.0f, 2.8f, 5.8f);
-        if (g_CameraMode == CAMERA_FPS)
-        {
-            if (mov_sec_camera == 1) 
-            {
-                // --- MODO 1: Lente mira no jogador (Câmera 2) ---
-                glm::vec3 target_player = glm::vec3(Pos_Player.x, Pos_Player.y + 0.5f, Pos_Player.z);
-                
-                // Calculamos o quão de lado o jogador está em relação à câmera (eixo X)
-                // Posição da câmera 2 no eixo X é 8.0f
-                float dist_x = std::abs(target_player.x - 8.0f);
-
-                // Mapeamos essa distância lateral para o nosso fator 't' (0.0 a 1.0)
-                // Se ele estiver até 1.0 unidade pro lado, t = 0 (Perto)
-                // Se ele estiver a 3.0 unidades ou mais pro lado, t = 1 (Longe nos cantos)
-                float t = glm::clamp((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
-
-                // Interpolação linear (Lerp): 
-                // Se t=0 (jogador na frente), o limite de Z é 5.6 (quase debaixo da câmera).
-                // Se t=1 (jogador nos cantos), forçamos o limite de Z para 4.5 (empurra a visão pro meio da sala).
-                float limite_parede_z = glm::mix(1.5f, 7.5f, t);
-
-                // Aplica o limite! Como a câmera olha para valores negativos de Z (fundo da sala),
-                // nós não deixamos o alvo da câmera ultrapassar o limite seguro.
-                if (target_player.z > limite_parede_z) {
-                    target_player.z = limite_parede_z;
-                }
-
-                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
-            }
-            else if (mov_sec_camera == 2)
-            {
-                // MODO 2: Lente faz o Bézier
-                float raw  = fmod((float)glfwGetTime(), 2.0f * SECURITY_CAM_SWEEP_PERIOD) / SECURITY_CAM_SWEEP_PERIOD;
-                float ping = raw < 1.0f ? raw : 2.0f - raw;
-
-                const glm::vec4 wp[4] = {
-                    glm::vec4( 4.5f,  1.0f,  2.0f, 1.0f), // 0: Perto Esquerda
-                    glm::vec4(11.5f,  1.0f, -3.5f, 1.0f), // 1: Longe Direita
-                    glm::vec4( 4.5f, -0.8f, -3.5f, 1.0f), // 2: Longe Esquerda
-                    glm::vec4(11.5f, -0.8f,  2.0f, 1.0f), // 3: Perto Direita
-                };
-
-                int seg = (int)(ping * 3.0f);
-                if (seg > 2) seg = 2;
-                float local_t = ping * 3.0f - (float)seg;
-                if (local_t > 1.0f) local_t = 1.0f;
-
-                float smooth_t = local_t * local_t * (3.0f - 2.0f * local_t);
-
-                glm::vec4 from = wp[seg];
-                glm::vec4 to   = wp[seg + 1];
-                glm::vec4 lookat_target = BezierCubic(
-                    from,
-                    from + (to - from) * (1.0f / 3.0f),
-                    from + (to - from) * (2.0f / 3.0f),
-                    to,
-                    smooth_t
-                );
-                
-                // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
-                glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
-                sec_cam_front = glm::normalize(bezier_dir);
-            }
-        }
-        else // CAMERA_SECURITY
-        {
-            // Se estamos enxergando PELA câmera de segurança, o modelo físico 
-            // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(camera_view_vector));
-        }
-        up = glm::vec3(0.0f, 1.0f, 0.0f);
-        rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
-        model = Matrix_Translate(8.0f, 2.8f, 5.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
-        glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, SEC_CAM);
-        DrawVirtualObject("security_camera_2.001");
-
-
-        // Agora, por fim, vamos para a Sala 3
-
-        // Desenhamos o plano da parede (Frente 3R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(8.1f, -1.0f,+10.1f)*Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Trás 3R 1/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+11.0f, -1.0f + fatorRepeticao, +6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Trás 3R 2/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 2.0f;
-        model = Matrix_Translate(+5.0f, -1.0f + fatorRepeticao, 6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_2);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Trás 3R 3/3) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(8.0f, 2.0f,+6.2f) * Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o modelo da parede que vai na porta (Aberta 1R)
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(8.0f, -1.0f,+6.2f)* Matrix_Rotate_Y(M_PI) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, DOOR_WALL); 
-        DrawVirtualObject("door_wall");
-
-        // Desenhamos o plano da parede (Esquerda 3R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(10.0f, -1.0f,+10.1f) * Matrix_Rotate_Y(M_PI_2) *Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Direita 3R) (repetida fatorRepeticao vezes)
-        fatorRepeticao = 4.0f;
-        model = Matrix_Translate(6.0f, -1.0f,+10.1f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(fatorRepeticao,fatorRepeticao,fatorRepeticao);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL_4);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o pilar que segura o bolo (Direita 3R)
-        model = Matrix_Translate(7.8f, -1.0f,8.15f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o pilar que segura o bolo (Esquerda 3R)
-        model = Matrix_Translate(8.2f, -1.0f,8.15f) * Matrix_Rotate_Y(3*M_PI_2) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o pilar que segura o bolo (Frente 3R)
-        model = Matrix_Translate(8.0f, -1.0f,8.35f) * Matrix_Rotate_Y(M_PI) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o pilar que segura o bolo (Trás 3R)
-        model = Matrix_Translate(8.0f, -1.0f,7.95f) * Matrix_Rotate_X(3*M_PI_2) * Matrix_Scale(0.2,0.2,0.8);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, RADIO_BUTTON_RIFLED);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o pilar que segura o bolo (Cima 3R)
-        model = Matrix_Translate(8.0f, -0.2f, 8.15f) * Matrix_Scale(0.2,0.2,0.2);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, RADIO_BASE_PART);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o bolo
-        model = Matrix_Translate(8.0f, -0.1999f, 8.15f) * Matrix_Scale(0.1,0.1,0.1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, CAKE);
-        DrawVirtualObject("Sphere.004");
-        glUniform1i(g_object_id_uniform, CAKE_CANDLE);
-        DrawVirtualObject("Sphere.002");
-        glUniform1i(g_object_id_uniform, CAKE_CHERRY);
-        DrawVirtualObject("Sphere.001");
-        glUniform1i(g_object_id_uniform, CAKE_CHERRY_CREAM);
-        DrawVirtualObject("Sphere.003");
-        glUniform1i(g_object_id_uniform, CAKE_BOTTOM);
-        DrawVirtualObject("Sphere.005");
-
-
-        // Voltamos para a Sala 1 (a parte transparente precisa ser renderizada por último)
-
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_CULL_FACE);
-
-        // Desenhamos o plano da parede (Esquerda 1/2) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Esquerda 2/2) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+1.0f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Frente 1/2)
-        model = Matrix_Translate(+.0f,.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Frente 2/2)
-        model = Matrix_Translate(+.0f,2.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Trás 1/2)
-        model = Matrix_Translate(+.0f,.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Trás 2/2)
-        model = Matrix_Translate(+.0f,2.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Direita 1/2)
-        model = Matrix_Translate(-1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Direita 2/2)
-        model = Matrix_Translate(-1.0f,2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        glUniform1i(g_object_id_uniform, GLASS);
-        DrawVirtualObject("the_plane");
-
-
-        glEnable(GL_CULL_FACE);
-        glDisable(GL_BLEND);
 
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
@@ -2535,7 +2832,19 @@ void ResetScene()
     g_CameraMode = CAMERA_FPS;
     mov_sec_camera = 1;
 
-    // 5. Reset das variáveis de debug/poses (Opcional, mas recomendado)
+    // 5. Reset dos estados de travessia dos portais
+    g_PlayerCrossing.initialized = false;
+    g_BoxCrossing.initialized = false;
+    g_RadioCrossing.initialized = false;
+    g_PlayerCrossing2.initialized = false;
+    g_BoxCrossing2.initialized = false;
+    g_RadioCrossing2.initialized = false;
+    g_PlayerCrossing3.initialized = false;
+    g_BoxCrossing3.initialized = false;
+    g_RadioCrossing3.initialized = false;
+    g_PlayerPortalVel = glm::vec3(0.0f);
+
+    // 6. Reset das variáveis de debug/poses (Opcional, mas recomendado)
     g_AngleX = 0.0f; 
     g_AngleY = 0.0f; 
     g_AngleZ = 0.0f;
@@ -2549,6 +2858,70 @@ void ResetScene()
 }
 
 // Função que carrega uma imagem para ser utilizada como textura
+// Vincula às unidades de textura 0 (difusa) e 1 (auxiliar) as texturas usadas
+// pelo objeto identificado por object_id, conforme o mapeamento do
+// shader_fragment.glsl. Objetos de cor sólida (sem textura) deixam as unidades
+// sem textura vinculada. Necessário porque o macOS limita o fragment shader a
+// 16 samplers (veja comentário em LoadTextureImage()).
+void BindTexturesForObject(GLint object_id)
+{
+    int diffuse = -1; // índice em g_TextureID da textura difusa
+    int aux     = -1; // índice da textura auxiliar (especular/metalness/emissivo)
+
+    switch (object_id)
+    {
+        case WALL: case WALL_2: case WALL_4: case DOOR_WALL: diffuse = 1;  break;
+        case FLOOR:                                          diffuse = 18; break;
+        case CEILING:                                        diffuse = 19; break;
+        case PLAYER_HEAD:                                    diffuse = 2;  break;
+        case PLAYER_EYE:                                     diffuse = 3;  break;
+        case PLAYER_TORSO:                                   diffuse = 4;  break;
+        case PLAYER_LEGS:                                    diffuse = 5;  break;
+        case PLAYER_HAIR:                                    diffuse = 6;  break;
+        case CUBE_003:                          diffuse = 8;  aux = 11; break;
+        case CUBE:                              diffuse = 9;  aux = 12; break;
+        case CUBE_CIRCLE3:                                   diffuse = 7;  break;
+        case BUTTON: case BUTTON_001:                        diffuse = 14; break;
+        case DOOR:                                           diffuse = 17; break;
+        case SEC_CAM:                           diffuse = 20; aux = 21; break;
+        case RADIO_SHELL:                                    diffuse = 22; break;
+        case RADIO_MAIN:                        diffuse = 23; aux = 0;  break;
+        case RADIO_GRID:                                     diffuse = 24; break;
+        case RADIO_SCREEN:                      diffuse = 25; aux = 31; break;
+        case RADIO_LIGHT:                                    diffuse = 26; break;
+        case RADIO_ANTENNA:                                  diffuse = 27; break;
+        case RADIO_BUTTON:                                   diffuse = 28; break;
+        case RADIO_BUTTON_RIFLED:                            diffuse = 29; break;
+        case RADIO_BASE_PART:                                diffuse = 30; break;
+        case CAKE:                                           diffuse = 13; break;
+        case CAKE_CANDLE:                                    diffuse = 15; break;
+        default: break; // objetos de cor sólida não amostram textura
+    }
+
+    // Para objetos sem textura (cor sólida) ou sem mapa auxiliar, vinculamos
+    // mesmo assim uma textura válida de fallback (a primeira carregada). Essas
+    // unidades não são amostradas nessas branches do shader, mas isso evita o
+    // aviso do driver do macOS "using zero texture because texture unloadable".
+    GLuint fallbackTex = (g_NumLoadedTextures > 0) ? g_TextureID[0] : 0;
+    GLuint fallbackSmp = (g_NumLoadedTextures > 0) ? g_SamplerID[0] : 0;
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, diffuse >= 0 ? g_TextureID[diffuse] : fallbackTex);
+    glBindSampler(0, diffuse >= 0 ? g_SamplerID[diffuse] : fallbackSmp);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, aux >= 0 ? g_TextureID[aux] : fallbackTex);
+    glBindSampler(1, aux >= 0 ? g_SamplerID[aux] : fallbackSmp);
+}
+
+// Define o object_id no fragment shader e já vincula as texturas necessárias
+// para aquele objeto. Substitui o antigo glUniform1i(g_object_id_uniform, ...).
+void SetObjectId(GLint object_id)
+{
+    glUniform1i(g_object_id_uniform, object_id);
+    BindTexturesForObject(object_id);
+}
+
 void LoadTextureImage(const char* filename, bool deveRepetir)
 {
     printf("Carregando imagem \"%s\"... ", filename);
@@ -2596,12 +2969,21 @@ void LoadTextureImage(const char* filename, bool deveRepetir)
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
 
-    GLuint textureunit = g_NumLoadedTextures;
-    glActiveTexture(GL_TEXTURE0 + textureunit);
+    // Carregamos a textura na unidade 0 apenas para enviá-la à GPU. A partir
+    // daqui ela NÃO fica permanentemente vinculada a uma unidade de textura:
+    // guardamos seu ID (e o do sampler) e a vinculamos sob demanda, por objeto,
+    // em BindTexturesForObject() — necessário para respeitar o limite de 16
+    // samplers do macOS.
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_id);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
-    glBindSampler(textureunit, sampler_id);
+
+    if (g_NumLoadedTextures < MAX_TEXTURES)
+    {
+        g_TextureID[g_NumLoadedTextures] = texture_id;
+        g_SamplerID[g_NumLoadedTextures] = sampler_id;
+    }
 
     stbi_image_free(data);
 
@@ -2681,46 +3063,22 @@ void LoadShadersFromFiles()
     g_view_uniform       = glGetUniformLocation(g_GpuProgramID, "view"); // Variável da matriz "view" em shader_vertex.glsl
     g_projection_uniform = glGetUniformLocation(g_GpuProgramID, "projection"); // Variável da matriz "projection" em shader_vertex.glsl
     g_object_id_uniform  = glGetUniformLocation(g_GpuProgramID, "object_id"); // Variável "object_id" em shader_fragment.glsl
+    g_portal_pass_uniform = glGetUniformLocation(g_GpuProgramID, "portalPass");
     g_bbox_min_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_min");
     g_bbox_max_uniform   = glGetUniformLocation(g_GpuProgramID, "bbox_max");
     g_flashlight_pos_uniform = glGetUniformLocation(g_GpuProgramID, "flashlight_pos"); // Lanterna
     g_flashlight_dir_uniform = glGetUniformLocation(g_GpuProgramID, "flashlight_dir");
     g_flashlight_on_uniform  = glGetUniformLocation(g_GpuProgramID, "flashlight_on");
+    g_clipplane_uniform      = glGetUniformLocation(g_GpuProgramID, "clipPlane"); // recorte dos portais
 
-    // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura
+    // Variáveis em "shader_fragment.glsl" para acesso das imagens de textura.
+    // Agora o shader usa apenas duas samplers (limite de 16 do macOS): a textura
+    // difusa fica na unidade 0 e a auxiliar (especular/metalness/emissivo) na
+    // unidade 1. As texturas corretas são vinculadas por objeto em
+    // BindTexturesForObject().
     glUseProgram(g_GpuProgramID);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage0"), 0);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage1"), 1);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage2"), 2);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage3"), 3);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage4"), 4);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage5"), 5);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage6"), 6);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage7"), 7);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage8"), 8);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage9"), 9);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage10"), 10);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage11"), 11);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage12"), 12);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage13"), 13);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage14"), 14);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage15"), 15);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage16"), 16);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage17"), 17);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage18"), 18);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage19"), 19);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage20"), 20);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage21"), 21);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage22"), 22);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage23"), 23);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage24"), 24);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage25"), 25);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage26"), 26);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage27"), 27);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage28"), 28);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage29"), 29);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage30"), 30);
-    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureImage31"), 31);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureDiffuse"), 0);
+    glUniform1i(glGetUniformLocation(g_GpuProgramID, "TextureAux"), 1);
     glUseProgram(0);
 }
 

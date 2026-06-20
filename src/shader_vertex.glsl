@@ -11,6 +11,11 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
+// Plano de recorte do usuário (coords de mundo), usado na renderização dos
+// portais para descartar geometria atrás do portal de destino. Quando todos os
+// coeficientes são 0 (padrão), não recorta nada (gl_ClipDistance = 0).
+uniform vec4 clipPlane;
+
 // Atributos de vértice que serão gerados como saída ("out") pelo Vertex Shader.
 // ** Estes serão interpolados pelo rasterizador! ** gerando, assim, valores
 // para cada fragmento, os quais serão recebidos como entrada pelo Fragment
@@ -63,5 +68,10 @@ void main()
 
     // Coordenadas de textura obtidas do arquivo OBJ (se existirem!)
     texcoords = texture_coefficients;
+
+    // Recorte oblíquo para os portais: descarta fragmentos com distância < 0 ao
+    // plano 'clipPlane'. Com clipPlane = (0,0,0,0), a distância é 0 em todo lugar
+    // e nada é recortado (no-op fora da renderização de portais).
+    gl_ClipDistance[0] = dot(position_world, clipPlane);
 }
 

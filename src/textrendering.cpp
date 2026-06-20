@@ -117,7 +117,10 @@ void TextRendering_Init()
     texttex_uniform = glGetUniformLocation(textprogram_id, "tex");
     glCheckError();
 
-    GLuint textureunit = 31;
+    // Usamos a unidade de textura 2 (as unidades 0 e 1 são reservadas para as
+    // texturas dos objetos 3D). O macOS limita o número de unidades, então não
+    // podemos usar valores altos como 31.
+    GLuint textureunit = 2;
     glActiveTexture(GL_TEXTURE0 + textureunit);
     glBindTexture(GL_TEXTURE_2D, texttexture_id);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, dejavufont.tex_width, dejavufont.tex_height, 0, GL_RED, GL_UNSIGNED_BYTE, dejavufont.tex_data);
