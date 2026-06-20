@@ -70,39 +70,17 @@ uniform int object_id;
 uniform vec4 bbox_min;
 uniform vec4 bbox_max;
 
-// Variáveis para acesso das imagens de textura
-uniform sampler2D TextureImage0;
-uniform sampler2D TextureImage1;
-uniform sampler2D TextureImage2;
-uniform sampler2D TextureImage3;
-uniform sampler2D TextureImage4;
-uniform sampler2D TextureImage5;
-uniform sampler2D TextureImage6;
-uniform sampler2D TextureImage7;
-uniform sampler2D TextureImage8;
-uniform sampler2D TextureImage9;
-uniform sampler2D TextureImage10;
-uniform sampler2D TextureImage11;
-uniform sampler2D TextureImage12;
-uniform sampler2D TextureImage13;
-uniform sampler2D TextureImage14;
-uniform sampler2D TextureImage15;
-uniform sampler2D TextureImage16;
-uniform sampler2D TextureImage17;
-uniform sampler2D TextureImage18;
-uniform sampler2D TextureImage19;
-uniform sampler2D TextureImage20;
-uniform sampler2D TextureImage21;
-uniform sampler2D TextureImage22;
-uniform sampler2D TextureImage23;
-uniform sampler2D TextureImage24;
-uniform sampler2D TextureImage25;
-uniform sampler2D TextureImage26;
-uniform sampler2D TextureImage27;
-uniform sampler2D TextureImage28;
-uniform sampler2D TextureImage29;
-uniform sampler2D TextureImage30;
-uniform sampler2D TextureImage31;
+// Variáveis para acesso das imagens de textura.
+//
+// IMPORTANTE (compatibilidade com macOS): o macOS limita o fragment shader a
+// no máximo 16 samplers ativos, mas a cena usa ~30 texturas distintas. Para
+// respeitar esse limite, em vez de declarar uma sampler por textura, usamos
+// apenas duas: a textura difusa do objeto atual (TextureDiffuse) e uma textura
+// auxiliar (TextureAux), usada para mapa especular / metalness / emissivo.
+// O código C++ (BindTexturesForObject) vincula, antes de cada objeto, a(s)
+// textura(s) correta(s) às unidades 0 e 1 de acordo com o object_id.
+uniform sampler2D TextureDiffuse; // unidade de textura 0
+uniform sampler2D TextureAux;     // unidade de textura 1
 
 // O valor de saída ("out") de um Fragment Shader é a cor final do fragmento.
 out vec4 color;
@@ -216,8 +194,8 @@ void main()
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
-		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
+		Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == WALL_2)
     {
@@ -227,8 +205,8 @@ void main()
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
-		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
+		Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == WALL_4)
     {
@@ -238,8 +216,8 @@ void main()
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
-		Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
+		Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == FLOOR)
     {
@@ -249,8 +227,8 @@ void main()
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage18
-		Kd0 = texture(TextureImage18, vec2(U,V)).rgb;
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
+		Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if ( object_id == CEILING)
@@ -261,8 +239,8 @@ void main()
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage1
-		Kd0 = texture(TextureImage19, vec2(U,V)).rgb;
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
+		Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if (object_id == PLAYER_HEAD)
     {
@@ -271,9 +249,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage2
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage2, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == PLAYER_EYE)
@@ -283,9 +261,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage3
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage3, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == PLAYER_TORSO)
@@ -295,9 +273,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage4
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage4, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == PLAYER_LEGS)
@@ -307,9 +285,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage5
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage5, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == PLAYER_HAIR)
@@ -319,9 +297,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage6
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage6, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == CUBE_003)
@@ -331,12 +309,12 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage8 e o especular da TextureImage11
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse e o especular da TextureDiffuse
 
         // cor base do cubo (apertureTexture)
-        Kd0 = texture(TextureImage8, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
-        Ks_map = texture(TextureImage11, vec2(U,V)).r;
+        Ks_map = texture(TextureAux, vec2(U,V)).r;
         
     }
     else if (object_id == CUBE)
@@ -346,11 +324,11 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage9 e o especular da TextureImage12
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse e o especular da TextureDiffuse
 
-        Kd0 = texture(TextureImage9, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
-        Ks_map = texture(TextureImage12, vec2(U,V)).r;
+        Ks_map = texture(TextureAux, vec2(U,V)).r;
         
     }
     else if (object_id == CUBE_CIRCLE3)
@@ -360,9 +338,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage7
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage7, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
         Ks_map = 0.5;
         
@@ -400,9 +378,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage14
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage14, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
     }
     else if (object_id == BUTTON_001)
@@ -412,9 +390,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage14
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage14, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == DOOR)
@@ -423,9 +401,9 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage17
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse
 
-        Kd0 = texture(TextureImage17, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
     }
     else if (object_id == GLASS)
@@ -444,11 +422,11 @@ void main()
         U = texcoords.x;
         V = texcoords.y;
 
-		// Obtemos a refletância difusa a partir da leitura da imagem TextureImage20 e o especular da TextureImage21
+		// Obtemos a refletância difusa a partir da leitura da imagem TextureDiffuse e o especular da TextureDiffuse
 
-        Kd0 = texture(TextureImage20, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
-        Ks_map = texture(TextureImage21, vec2(U,V)).r;
+        Ks_map = texture(TextureAux, vec2(U,V)).r;
         
     }
     else if ( object_id == DOOR_WALL)
@@ -456,7 +434,7 @@ void main()
         float fatorRepeticao = 1.0; 
         U = texcoords.x * fatorRepeticao;
         V = texcoords.y * fatorRepeticao;
-        Kd0 = texture(TextureImage1, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
         // O TRUQUE DE FLAT SHADING: Ignora a normal do arquivo e calcula 
         // a perpendicular verdadeira da face na hora de desenhar!
@@ -469,38 +447,38 @@ void main()
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage22, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == RADIO_MAIN)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage23, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         // LÊ A TEXTURA ZERO! Pegamos o canal vermelho (r) pois a imagem é em preto e branco.
-        metalness = texture(TextureImage0, vec2(U,V)).r;
+        metalness = texture(TextureAux, vec2(U,V)).r;
     }
     else if ( object_id == RADIO_GRID)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage24, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         metalness = 1.0; // Como não temos textura pra grade, forçamos 100% metal
     }
     else if ( object_id == RADIO_SCREEN) 
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage25, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
 
         // Pega a textura Emissiva
         // Multiplica por 2.0 para fazer a telinha brilhar no escuro!
-        emissive_color = texture(TextureImage31, vec2(U,V)).rgb * 2.0;
+        emissive_color = texture(TextureAux, vec2(U,V)).rgb * 2.0;
     }
     else if ( object_id == RADIO_LIGHT) 
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage26, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         
         // Em vez de gastar o canal 32 com a imagem "Light_Emissive", nós simplesmente
         // usamos a própria cor base (Kd0) como luz e multiplicamos por um fator!
@@ -510,39 +488,39 @@ void main()
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage27, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         metalness = 1.0; // Força 100% metal
     }
     else if ( object_id == RADIO_BUTTON)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage28, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == RADIO_BUTTON_RIFLED)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage29, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
         metalness = 1.0; // Força 100% metal
     }
     else if ( object_id == RADIO_BASE_PART)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage30, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == CAKE)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage13, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == CAKE_CANDLE)
     {
         U = texcoords.x;
         V = texcoords.y;
-        Kd0 = texture(TextureImage15, vec2(U,V)).rgb;
+        Kd0 = texture(TextureDiffuse, vec2(U,V)).rgb;
     }
     else if ( object_id == CAKE_CHERRY)
     {
