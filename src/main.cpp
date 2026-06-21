@@ -58,6 +58,59 @@
 #include "soloud_wavstream.h"
 #include "soloud_queue.h"
 
+// object_id e constantes geométricas (movidos para escopo de arquivo para
+// que DrawScene(), definida acima de main(), também os enxergue).
+        // Constantes
+        #define SPHERE 0
+        #define BUNNY  1
+        #define PLANE  2
+        #define PLAYER_HEAD 3
+        #define PLAYER_EYE 4
+        #define PLAYER_TORSO 5
+        #define PLAYER_LEGS 6
+        #define PLAYER_HAIR 7
+        #define CUBE_003 8
+        #define CUBE_CIRCLE1 9
+        #define CUBE_002 10
+        #define CUBE 11
+        #define CUBE_CIRCLE2 12
+        #define CUBE_CIRCLE3 13
+        #define BUTTON 14
+        #define BUTTON_001 15
+        #define DOOR 16
+        #define WALL 17
+        #define FLOOR 18
+        #define CEILING 19
+        #define GLASS 20
+        #define WALL_2 21
+        #define WALL_4 22
+        #define SEC_CAM 23
+        #define DOOR_WALL 24
+        #define RADIO_SHELL 25
+        #define RADIO_MAIN 26
+        #define RADIO_GRID 27
+        #define RADIO_SCREEN 28
+        #define RADIO_LIGHT 29
+        #define RADIO_ANTENNA 30
+        #define RADIO_BUTTON 31
+        #define RADIO_BUTTON_RIFLED 32
+        #define RADIO_BASE_PART 33
+        #define CAKE 34
+        #define CAKE_CANDLE 35
+        #define CAKE_CHERRY 36
+        #define CAKE_CHERRY_CREAM 37
+        #define CAKE_BOTTOM 38
+
+        // Constantes
+        #ifndef M_PI
+        #define M_PI   3.14159265358979323846
+        #endif
+
+        #ifndef M_PI_2
+        #define M_PI_2 1.57079632679489661923
+        #endif
+
+
 // Variável global do motor de áudio
 SoLoud::Soloud g_Soloud;
 
@@ -83,12 +136,12 @@ SoLoud::Wav g_SfxDoor;
 SoLoud::Wav g_SfxDoorClose;
 
 // Controle do Rádio estilo Portal
-glm::vec3 g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f); // Posição inicial do modelo
+glm::vec3 g_RadioPosition = glm::vec3(-0.5f, -1.0f, 0.5f); // Posição inicial do modelo
 SoLoud::WavStream g_RadioMusic;                            // Stream para músicas longas
 int g_RadioMusicHandle = 0;                                // ID da instância tocando
 float g_RadioVelocityY = 0.0f; // Controla a gravidade do rádio
 glm::vec3 g_RadioVel = glm::vec3(0.0f); // momento horizontal (xz) carregado por portais
-float g_RadioAngleY = 0.0f;    // Controla a rotação para encarar o jogador
+float g_RadioAngleY = (float)M_PI*1.4/2.0;    // Controla a rotação para encarar o jogador
 bool g_IsHoldingRadio = false; // Estado de carregar o rádio
 
 // Rastreadores de Estado (Edge Detection)
@@ -301,7 +354,7 @@ bool g_MiddleMouseButtonPressed = false; // Análogo para botão do meio do mous
 // usuário através do mouse (veja função CursorPosCallback()). A posição
 // efetiva da câmera é calculada dentro da função main(), dentro do loop de
 // renderização.
-float g_CameraTheta = 0.0f; // Ângulo no plano ZX em relação ao eixo Z
+float g_CameraTheta = (float)M_PI; // Ângulo no plano ZX em relação ao eixo Z
 float g_CameraPhi = 0.0f;   // Ângulo em relação ao eixo Y
 float g_CameraDistance = 3.5f; // Distância da câmera para a origem
 
@@ -349,7 +402,7 @@ GLuint g_TextureID[MAX_TEXTURES];
 GLuint g_SamplerID[MAX_TEXTURES];
 
 // Variável para a posição global do personagem (e, consequentemente, da câmera)
-glm::vec4 Pos_Player = glm::vec4(.0f,.0f,-2.0f,1.0f);
+glm::vec4 Pos_Player = glm::vec4(.0f,.0f,.0f,1.0f);
 float velocidade = 3; // Velocidade do personagem para andar
 
 // Controle da Caixa estilo Portal
@@ -439,61 +492,57 @@ const float SECURITY_CAM_SWEEP_PERIOD = 14.0f;
 // Última posição conhecida do cursor (usada para calcular deltas de movimento)
 double g_LastCursorPosX, g_LastCursorPosY;
 
-// object_id e constantes geométricas (movidos para escopo de arquivo para
-// que DrawScene(), definida acima de main(), também os enxergue).
-        // Constantes
-        #define SPHERE 0
-        #define BUNNY  1
-        #define PLANE  2
-        #define PLAYER_HEAD 3
-        #define PLAYER_EYE 4
-        #define PLAYER_TORSO 5
-        #define PLAYER_LEGS 6
-        #define PLAYER_HAIR 7
-        #define CUBE_003 8
-        #define CUBE_CIRCLE1 9
-        #define CUBE_002 10
-        #define CUBE 11
-        #define CUBE_CIRCLE2 12
-        #define CUBE_CIRCLE3 13
-        #define BUTTON 14
-        #define BUTTON_001 15
-        #define DOOR 16
-        #define WALL 17
-        #define FLOOR 18
-        #define CEILING 19
-        #define GLASS 20
-        #define WALL_2 21
-        #define WALL_4 22
-        #define SEC_CAM 23
-        #define DOOR_WALL 24
-        #define RADIO_SHELL 25
-        #define RADIO_MAIN 26
-        #define RADIO_GRID 27
-        #define RADIO_SCREEN 28
-        #define RADIO_LIGHT 29
-        #define RADIO_ANTENNA 30
-        #define RADIO_BUTTON 31
-        #define RADIO_BUTTON_RIFLED 32
-        #define RADIO_BASE_PART 33
-        #define CAKE 34
-        #define CAKE_CANDLE 35
-        #define CAKE_CHERRY 36
-        #define CAKE_CHERRY_CREAM 37
-        #define CAKE_BOTTOM 38
-
-        // Constantes
-        #ifndef M_PI
-        #define M_PI   3.14159265358979323846
-        #endif
-
-        #ifndef M_PI_2
-        #define M_PI_2 1.57079632679489661923
-        #endif
-
 // Câmera atualmente sendo renderizada (real ou virtual de um portal).
 // Usada por billboards como o modelo da câmera de segurança.
 glm::vec4 g_RenderCameraViewVector = glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
+
+void DrawTransparentObjects()
+{
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
+
+    glm::mat4 model = Matrix_Identity();
+
+    // Desenhamos o plano das paredes de vidro (Frente 1/2)
+    model = Matrix_Translate(+.0f,.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+    glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+    SetObjectId(GLASS);
+    DrawVirtualObject("the_plane");
+
+    // Desenhamos o plano das paredes de vidro (Frente 2/2)
+    model = Matrix_Translate(+.0f,2.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+    glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+    SetObjectId(GLASS);
+    DrawVirtualObject("the_plane");
+
+    // Desenhamos o plano das paredes de vidro (Trás 1/2)
+    model = Matrix_Translate(+.0f,.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+    glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+    SetObjectId(GLASS);
+    DrawVirtualObject("the_plane");
+
+    // Desenhamos o plano das paredes de vidro (Trás 2/2)
+    model = Matrix_Translate(+.0f,2.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+    glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+    SetObjectId(GLASS);
+    DrawVirtualObject("the_plane");
+
+    // Desenhamos o plano das paredes de vidro (Direita 1/2)
+    model = Matrix_Translate(-1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+    glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+    SetObjectId(GLASS);
+    DrawVirtualObject("the_plane");
+
+    // Desenhamos o plano das paredes de vidro (Direita 2/2)
+    model = Matrix_Translate(-1.0f,2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+    glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+    SetObjectId(GLASS);
+    DrawVirtualObject("the_plane");
+
+    glEnable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+}
 
 // Desenha TODA a geometria do mundo (jogador, salas, objetos). Foi extraída
 // do loop principal para poder ser re-renderizada pela câmera virtual dos
@@ -520,6 +569,22 @@ void DrawScene()
 
         
         // Cena Da 1R
+
+        // Cubículo de vidro
+        glDisable(GL_CULL_FACE);
+        // Desenhamos o plano da parede (Esquerda 1/2) (repetida fatorRepeticao vezes) 
+        model = Matrix_Translate(+1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+
+        // Desenhamos o plano da parede (Esquerda 2/2) (repetida fatorRepeticao vezes) 
+        model = Matrix_Translate(+1.0f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
+        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
+        SetObjectId(WALL);
+        DrawVirtualObject("the_plane");
+        glEnable(GL_CULL_FACE);
+
         
         // Desenhamos o plano do chão (1R)
         float fatorRepeticao = 4.0f;
@@ -1041,67 +1106,6 @@ void DrawScene()
         DrawVirtualObject("Sphere.003");
         SetObjectId(CAKE_BOTTOM);
         DrawVirtualObject("Sphere.005");
-
-
-        // Voltamos para a Sala 1 (a parte transparente precisa ser renderizada por último)
-
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_CULL_FACE);
-
-        // Desenhamos o plano da parede (Esquerda 1/2) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano da parede (Esquerda 2/2) (repetida fatorRepeticao vezes) 
-        fatorRepeticao = 1.0f;
-        model = Matrix_Translate(+1.0f, 2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(WALL);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Frente 1/2)
-        model = Matrix_Translate(+.0f,.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Frente 2/2)
-        model = Matrix_Translate(+.0f,2.0f,+1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Trás 1/2)
-        model = Matrix_Translate(+.0f,.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Trás 2/2)
-        model = Matrix_Translate(+.0f,2.0f,-1.0f)*Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Direita 1/2)
-        model = Matrix_Translate(-1.0f,.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(GLASS);
-        DrawVirtualObject("the_plane");
-
-        // Desenhamos o plano das paredes de vidro (Direita 2/2)
-        model = Matrix_Translate(-1.0f,2.0f,0.0f) * Matrix_Rotate_Y(M_PI_2) * Matrix_Rotate_X(M_PI_2) * Matrix_Scale(1,1,1);
-        glUniformMatrix4fv(g_model_uniform, 1 , GL_FALSE , glm::value_ptr(model));
-        SetObjectId(GLASS);
-        DrawVirtualObject("the_plane");
-
-
-        glEnable(GL_CULL_FACE);
-        glDisable(GL_BLEND);
 }
 
 // --- Portais ---------------------------------------------------------------
@@ -1111,7 +1115,7 @@ struct PortalSet {
     PortalPair          pair;
     PortalCrossingState player, box, radio;
 };
-static const int NUM_PORTAL_PAIRS = 3;
+static const int NUM_PORTAL_PAIRS = 1;
 PortalSet g_PortalSets[NUM_PORTAL_PAIRS]; // [0] Sala 1 · [1] teto/parede · [2] paredes adjacentes
 
 // Raio de colisão de cada entidade (usado no offset frontal p/ detecção de travessia).
@@ -1121,7 +1125,7 @@ static const float BOX_BODY_RADIUS    = 0.3f;
 static const float RADIO_BODY_RADIUS  = 0.2f;
 
 // Thunks: permitem ao módulo de portais chamar a renderização definida aqui.
-static void Portal_DrawScene() { DrawScene(); }
+static void Portal_DrawScene() { DrawScene(); DrawTransparentObjects();}
 static void Portal_DrawPlane() { DrawVirtualObject("the_plane"); }
 
 int main(int argc, char* argv[])
@@ -1328,26 +1332,14 @@ int main(int argc, char* argv[])
     // --- Instanciação dos portais (API: ponto + normal da parede via onWall) ---
     // onWall deriva a base ortonormal só da normal, então qualquer parede/teto
     // funciona igual. Cada par é vinculado (azul + laranja).
-    const float kPortalW = 1.2f, kPortalH = 2.0f;
+    const float kPortalW = 1.0f, kPortalH = 2.0f;
 
-    // [0] Sala 1: paredes opostas e paralelas (Z=∓4), uma de frente para a outra.
+    // Sala 1: portal dentro do cubículo e fora.
     g_PortalSets[0].pair = PortalPair::create(
-        Portal::onWall(glm::vec3(0.0f, 1.0f, -3.98f), glm::vec3(0.0f, 0.0f,  1.0f)), // azul    — parede frontal
-        Portal::onWall(glm::vec3(0.0f, 1.0f,  3.98f), glm::vec3(0.0f, 0.0f, -1.0f)), // laranja — parede traseira
+        Portal::onWall(glm::vec3(+0.98f,0.0f, 0.0f), glm::vec3(-1.0f, 0.0f,  0.0f)), // azul    — parede frontal
+        Portal::onWall(glm::vec3(-0.5f, 0.0f, 3.98f), glm::vec3(0.0f, 0.0f, -1.0f)), // laranja — parede traseira
         kPortalW, kPortalH);
 
-    // [1] Sala 2: teto (Y=+2.7) e parede direita (X=+12). upHint do teto evita
-    // base degenerada (normal ~vertical).
-    g_PortalSets[1].pair = PortalPair::create(
-        Portal::onWall(glm::vec3(8.0f,   2.70f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)), // teto
-        Portal::onWall(glm::vec3(11.98f, 1.0f,  1.0f), glm::vec3(-1.0f, 0.0f, 0.0f)),                              // parede direita
-        kPortalW, kPortalH);
-
-    // [2] Sala 2: parede do fundo (Z=-4) e parede esquerda (X=+4.2), adjacentes.
-    g_PortalSets[2].pair = PortalPair::create(
-        Portal::onWall(glm::vec3(6.5f,  1.0f, -3.98f), glm::vec3(0.0f, 0.0f, 1.0f)), // parede do fundo
-        Portal::onWall(glm::vec3(4.23f, 1.0f, -1.5f),  glm::vec3(1.0f, 0.0f, 0.0f)), // parede esquerda
-        kPortalW, kPortalH);
 
     // Raio de colisão por entidade (offset frontal na detecção de travessia).
     for (int i = 0; i < NUM_PORTAL_PAIRS; ++i)
@@ -1565,7 +1557,7 @@ int main(int argc, char* argv[])
         // --- Portais: travessia do jogador (SNAP) ---
         // Monta a velocidade 3D atual (horizontal pretendida + vertical), deixa o
         // portal transformá-la e devolve posição, olhar e velocidade do outro lado.
-        if (g_GameStarted && deltaTime > 1e-5f)
+        if (deltaTime > 1e-5f)
         {
             glm::vec3 ppos = glm::vec3(Pos_Player);
             glm::vec3 pvel(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
@@ -1575,30 +1567,6 @@ int main(int argc, char* argv[])
                 Pos_Player = glm::vec4(ppos, 1.0f);
                 g_PlayerVelocityY = pvel.y;
                 g_PlayerPortalVel = glm::vec3(pvel.x, 0.0f, pvel.z);
-            }
-            // Segundo par (Sala 2)
-            {
-                glm::vec3 ppos2 = glm::vec3(Pos_Player);
-                glm::vec3 pvel2(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
-                if (g_PortalSets[1].pair.teleportPlayer(g_PortalSets[1].player, ppos2, pvel2,
-                                             g_CameraTheta, g_CameraPhi))
-                {
-                    Pos_Player = glm::vec4(ppos2, 1.0f);
-                    g_PlayerVelocityY = pvel2.y;
-                    g_PlayerPortalVel = glm::vec3(pvel2.x, 0.0f, pvel2.z);
-                }
-            }
-            // Terceiro par (Sala 2)
-            {
-                glm::vec3 ppos3 = glm::vec3(Pos_Player);
-                glm::vec3 pvel3(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
-                if (g_PortalSets[2].pair.teleportPlayer(g_PortalSets[2].player, ppos3, pvel3,
-                                             g_CameraTheta, g_CameraPhi))
-                {
-                    Pos_Player = glm::vec4(ppos3, 1.0f);
-                    g_PlayerVelocityY = pvel3.y;
-                    g_PlayerPortalVel = glm::vec3(pvel3.x, 0.0f, pvel3.z);
-                }
             }
         }
 
@@ -1825,9 +1793,6 @@ int main(int argc, char* argv[])
         glUniformMatrix4fv(g_view_uniform       , 1 , GL_FALSE , glm::value_ptr(view));
         glUniformMatrix4fv(g_projection_uniform , 1 , GL_FALSE , glm::value_ptr(projection));
 
-
-        // Defina uniformes no shader (supondo que você buscou os IDs com glGetUniformLocation)
-        // Dentro do loop, perto de onde você envia view e projection:
         glUniform4fv(g_flashlight_pos_uniform, 1, glm::value_ptr(camera_position_c));
         glUniform4fv(g_flashlight_dir_uniform, 1, glm::value_ptr(camera_view_vector));
         glUniform1i(g_flashlight_on_uniform, (int)g_FlashlightEnabled);
@@ -1918,10 +1883,7 @@ int main(int argc, char* argv[])
             }
             g_BoxPosition = finalPos;
 
-            // Enquanto segurada, mantemos o estado de travessia "zerado" para não
-            // disparar um teleporte espúrio ao soltar perto de um portal.
             g_PortalSets[0].box.initialized = false;
-            g_PortalSets[1].box.initialized = false;
 
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
             g_BoxAngleY = g_CameraTheta;
@@ -1965,38 +1927,14 @@ int main(int argc, char* argv[])
 
             // Travessia de portal (SNAP) para a caixa: transforma posição,
             // velocidade (vertical + horizontal) e rotação.
-            if (g_GameStarted)
+        
+            glm::vec3 bvel(g_BoxVel.x, g_BoxVelocityY, g_BoxVel.z);
+            float byaw = g_BoxAngleY;
+            if (g_PortalSets[0].pair.teleportIfCrossed(g_PortalSets[0].box, g_BoxPosition, &bvel, &byaw))
             {
-                glm::vec3 bvel(g_BoxVel.x, g_BoxVelocityY, g_BoxVel.z);
-                float byaw = g_BoxAngleY;
-                if (g_PortalSets[0].pair.teleportIfCrossed(g_PortalSets[0].box, g_BoxPosition, &bvel, &byaw))
-                {
-                    g_BoxVelocityY = bvel.y;
-                    g_BoxVel = glm::vec3(bvel.x, 0.0f, bvel.z);
-                    g_BoxAngleY = byaw;
-                }
-                // Segundo par (Sala 2)
-                {
-                    glm::vec3 bvel2 = bvel;
-                    float byaw2 = g_BoxAngleY;
-                    if (g_PortalSets[1].pair.teleportIfCrossed(g_PortalSets[1].box, g_BoxPosition, &bvel2, &byaw2))
-                    {
-                        g_BoxVelocityY = bvel2.y;
-                        g_BoxVel = glm::vec3(bvel2.x, 0.0f, bvel2.z);
-                        g_BoxAngleY = byaw2;
-                    }
-                }
-                // Terceiro par (Sala 2)
-                {
-                    glm::vec3 bvel3 = bvel;
-                    float byaw3 = g_BoxAngleY;
-                    if (g_PortalSets[2].pair.teleportIfCrossed(g_PortalSets[2].box, g_BoxPosition, &bvel3, &byaw3))
-                    {
-                        g_BoxVelocityY = bvel3.y;
-                        g_BoxVel = glm::vec3(bvel3.x, 0.0f, bvel3.z);
-                        g_BoxAngleY = byaw3;
-                    }
-                }
+                g_BoxVelocityY = bvel.y;
+                g_BoxVel = glm::vec3(bvel.x, 0.0f, bvel.z);
+                g_BoxAngleY = byaw;
             }
         }
 
@@ -2028,8 +1966,6 @@ int main(int argc, char* argv[])
             // Enquanto segurado, mantém o estado de travessia "zerado" para não
             // disparar um teleporte espúrio ao soltar perto de um portal.
             g_PortalSets[0].radio.initialized = false;
-            g_PortalSets[1].radio.initialized = false;
-            g_PortalSets[2].radio.initialized = false;
 
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
             g_RadioAngleY = g_CameraTheta;
@@ -2072,38 +2008,13 @@ int main(int argc, char* argv[])
             }
 
             // Travessia de portal (SNAP) para o rádio
-            if (g_GameStarted)
+            glm::vec3 rvel(g_RadioVel.x, g_RadioVelocityY, g_RadioVel.z);
+            float ryaw = g_RadioAngleY;
+            if (g_PortalSets[0].pair.teleportIfCrossed(g_PortalSets[0].radio, g_RadioPosition, &rvel, &ryaw))
             {
-                glm::vec3 rvel(g_RadioVel.x, g_RadioVelocityY, g_RadioVel.z);
-                float ryaw = g_RadioAngleY;
-                if (g_PortalSets[0].pair.teleportIfCrossed(g_PortalSets[0].radio, g_RadioPosition, &rvel, &ryaw))
-                {
-                    g_RadioVelocityY = rvel.y;
-                    g_RadioVel = glm::vec3(rvel.x, 0.0f, rvel.z);
-                    g_RadioAngleY = ryaw;
-                }
-                // Segundo par (Sala 2)
-                {
-                    glm::vec3 rvel2 = rvel;
-                    float ryaw2 = g_RadioAngleY;
-                    if (g_PortalSets[1].pair.teleportIfCrossed(g_PortalSets[1].radio, g_RadioPosition, &rvel2, &ryaw2))
-                    {
-                        g_RadioVelocityY = rvel2.y;
-                        g_RadioVel = glm::vec3(rvel2.x, 0.0f, rvel2.z);
-                        g_RadioAngleY = ryaw2;
-                    }
-                }
-                // Terceiro par (Sala 2)
-                {
-                    glm::vec3 rvel3 = rvel;
-                    float ryaw3 = g_RadioAngleY;
-                    if (g_PortalSets[2].pair.teleportIfCrossed(g_PortalSets[2].radio, g_RadioPosition, &rvel3, &ryaw3))
-                    {
-                        g_RadioVelocityY = rvel3.y;
-                        g_RadioVel = glm::vec3(rvel3.x, 0.0f, rvel3.z);
-                        g_RadioAngleY = ryaw3;
-                    }
-                }
+                g_RadioVelocityY = rvel.y;
+                g_RadioVel = glm::vec3(rvel.x, 0.0f, rvel.z);
+                g_RadioAngleY = ryaw;
             }
         }
 
@@ -2206,15 +2117,15 @@ int main(int argc, char* argv[])
         // cada portal (efeito see-through) e desenha suas superfícies/molduras.
         // O 3º argumento é a profundidade de recursão ("hall of mirrors"): o
         // efeito só aparece em pares que se encaram. Custo ~linear no nível.
-        if (g_GameStarted && g_CameraMode == CAMERA_FPS)
+        const int kPortalRecursionDepth = 3;
+        for (int i = 0; i < NUM_PORTAL_PAIRS; ++i)
         {
-            const int kPortalRecursionDepth = 3;
-            for (int i = 0; i < NUM_PORTAL_PAIRS; ++i)
-            {
-                g_PortalSets[i].pair.renderViews(view, projection, kPortalRecursionDepth);
-                g_PortalSets[i].pair.renderSurfaces();
-            }
+            g_PortalSets[i].pair.renderViews(view, projection, kPortalRecursionDepth);
+            g_PortalSets[i].pair.renderSurfaces();
         }
+
+        // AGORA desenhamos os objetos transparentes por cima de tudo
+        DrawTransparentObjects();
 
         // Imprimimos na tela informação sobre o número de quadros renderizados
         // por segundo (frames per second).
@@ -2713,8 +2624,8 @@ void SetupCollisionAABBs()
     // Paredes internas da Sala 1 ("prisão" central de vidro + parede sólida)
     // Cada parede é um the_plane ([-1,1] em local) com as rotações aplicadas na renderização,
     // resultando em lajes verticais de espessura wall_t centradas nas posições abaixo.
-    // Parede sólida em x=+1
-    g_CollisionAABBs.push_back({ glm::vec3(1.0f - wall_t, y_min, -1.0f), glm::vec3(1.0f + wall_t, y_max, 1.0f) });
+    // Parede sólida em x=+1 (Agora a colisão começa exatamentente onde o visual começa!)
+    g_CollisionAABBs.push_back({ glm::vec3(1.0f, y_min, -1.0f), glm::vec3(1.0f + wall_t, y_max, 1.0f) });
     // Parede de vidro em x=-1
     g_CollisionAABBs.push_back({ glm::vec3(-1.0f - wall_t, y_min, -1.0f), glm::vec3(-1.0f + wall_t, y_max, 1.0f) });
     // Parede de vidro em z=+1
@@ -2776,8 +2687,8 @@ void SetupCollisionAABBs()
 void ResetScene()
 {
     // 1. Reset do Jogador e Câmera
-    Pos_Player = glm::vec4(0.0f, 0.0f, -2.0f, 1.0f);
-    g_CameraTheta = 0.0f;
+    Pos_Player = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    g_CameraTheta = (float)M_PI;
     g_CameraPhi = 0.0f;
     g_PlayerVelocityY = 0.0f;
     g_SpaceWasPressed = false;
@@ -2791,9 +2702,9 @@ void ResetScene()
     g_EstavaSegurandoCaixa = false;
 
     // 2.5 Reset do Rádio
-    g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f); // Lembrar de mudar quando for colocar ele na posição inicial real/correta (dentro do vidro)
+    g_RadioPosition = glm::vec3(-0.5f, -1.0f, 0.5f); // Lembrar de mudar quando for colocar ele na posição inicial real/correta (dentro do vidro)
     g_RadioVelocityY = 0.0f;
-    g_RadioAngleY = 0.0f;
+    g_RadioAngleY = (float)M_PI*1.4/2.0;
     g_IsHoldingRadio = false;
     g_EstavaSegurandoRadio = false;
 
