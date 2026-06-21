@@ -1888,14 +1888,16 @@ int main(int argc, char* argv[])
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
             g_BoxAngleY = g_CameraTheta;
 
-            // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
+            // Depois de bastante teste, percebi que, por mais que fizesse sentido no contexto do jogo, 
+            // Esse sistema está mais ativamente atrapalhando do que ajudando, então decidi removê-lo
+            /* // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
             // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
             // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 1.0 unidades,
             // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
             float distToPlayer = glm::distance(start, finalPos);
             if (distToPlayer < 1.0f) {
                 g_IsHoldingBox = false;
-            }
+            } */
         }
         else
         {
@@ -1970,14 +1972,16 @@ int main(int argc, char* argv[])
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
             g_RadioAngleY = g_CameraTheta;
 
+            // Depois de bastante teste, percebi que, por mais que fizesse sentido no contexto do jogo, 
+            // Esse sistema está mais ativamente atrapalhando do que ajudando, então decidi removê-lo
             // SISTEMA ANTI-ESMAGAMENTO (A Lógica do Portal)
             // Se você anda contra a parede, a parede empurra o rádio na direção da câmera.
             // Se a distância entre a origem do raio (jogador) e o rádio ficar menor que 1.0 unidades,
             // o jogador solta o rádio automaticamente para evitar que a câmera entre nele.
-            float distToPlayer = glm::distance(start, finalPos);
+            /* float distToPlayer = glm::distance(start, finalPos);
             if (distToPlayer < 1.0f) {
                 g_IsHoldingRadio = false;
-            }
+            } */
         }
         else
         {
