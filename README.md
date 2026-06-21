@@ -36,15 +36,15 @@ Este repositório contém o código base para o trabalho final. O enunciado comp
 
 # Imagens mostrando o funcionamento da aplicação
 
-![1](screenshots\1.png)
+![1](screenshots/1.png)
 
-![2](screenshots\2.png)
+![2](screenshots/2.png)
 
-![3](screenshots\3.png)
+![3](screenshots/3.png)
 
-![4](screenshots\4.png)
+![4](screenshots/4.png)
 
-![5](screenshots\5.png)
+![5](screenshots/5.png)
 
 # Manual descrevendo a utilização da aplicação
 - A utilização da aplicação revela-se altamente intuitiva, pois a navegação é feita com o mouse e, ainda, todos os controles estão listados ao abrir o menu de "Configurações". De todo modo, são eles: 
