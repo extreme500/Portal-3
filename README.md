@@ -13,23 +13,23 @@ Este repositório contém o código base para o trabalho final. O enunciado comp
 
 # Contribuições de cada membro
 - Gabriel Pieruccini Knopp
-* Importação, edição e renderização de todos modelos 3D (Chell, cubo, câmera de segurança, botão, porta, parede, rádio, chão, teto, bolo e etc.), juntamente do mapeamento de suas texturas;
-* Montagem do cenário;
-* Revisão e correção das câmeras, adição do modo look-at para o jogador e sincronização do movimento com o modelo da câmera de segurança;
-* Implementação da iluminação da cena, juntamente com a função de usar uma lanterna;
-* Revisão e correção das colisões e implementação das colisões na sala 3;
-* Implementação da função de carregar o cubo e o rádio;
-* Implementação da colisão dinâmica com o cubo e o rádio;
-* Implementação da função de apertar o botão da sala e abrir a porta, quando o jogador ou a caixa estiverem em cima dele;
-* Implementação de efeitos sonoros e músicas;
-* Implementação de reinicialização da cena, botão de corrida e botão de mutar a música;
-* Implementação da interface, do menu de início, do menu de pause e do menu de vitória;
-* Revisão e pequenos ajustes nos portais da cena.
+    * Importação, edição e renderização de todos modelos 3D (Chell, cubo, câmera de segurança, botão, porta, parede, rádio, chão, teto, bolo e etc.), juntamente do mapeamento de suas texturas;
+    * Montagem do cenário;
+    * Revisão e correção das câmeras, adição do modo look-at para o jogador e sincronização do movimento com o modelo da câmera de segurança;
+    * Implementação da iluminação da cena, juntamente com a função de usar uma lanterna;
+    * Revisão e correção das colisões e implementação das colisões na sala 3;
+    * Implementação da função de carregar o cubo e o rádio;
+    * Implementação da colisão dinâmica com o cubo e o rádio;
+    * Implementação da função de apertar o botão da sala e abrir a porta, quando o jogador ou a caixa estiverem em cima dele;
+    * Implementação de efeitos sonoros e músicas;
+    * Implementação de reinicialização da cena, botão de corrida e botão de mutar a música;
+    * Implementação da interface, do menu de início, do menu de pause e do menu de vitória;
+    * Revisão e pequenos ajustes nos portais da cena.
 
 - Tobias Cadoná Marion
-* Implementação da visão da câmera em primeira pessoa e em movimento de curva de Bézier;
-* Implementação da física do jogador, da função de pular e de colisões do jogador com o cenário nas salas 1 e 2;
-* Implementação do sistema de portais e refatoração do fragment shader.
+    * Implementação da visão da câmera em primeira pessoa e em movimento de curva de Bézier;
+    * Implementação da física do jogador, da função de pular e de colisões do jogador com o cenário nas salas 1 e 2;
+    * Implementação do sistema de portais e refatoração do fragment shader.
 
 # Uso de IA
 - A dupla fez uso das ferramentas Gemini (Pro) e Claude para o desenvolvimento da aplicação, ajudando com a maior parte das implementações, sendo todo o auxílio descrito com totalidade no arquivo PROMPTS.md. Sobre o Gemini Pro, ele foi extraordinariamente útil durante todo o projeto, sendo capaz de realizar cálculos automaticamente para montagem das colisões da cena e sempre conseguindo chegar nos resultados desejados, contanto que fosse guiado até lá com cuidado. O único ponto que o Gemini devidamente sofreu para conseguir auxiliar (ou não conseguiu) foi para com algumas correções dos portais/interação deles com a cena, que teve de ser feita manualmente.
@@ -48,14 +48,14 @@ Este repositório contém o código base para o trabalho final. O enunciado comp
 
 # Manual descrevendo a utilização da aplicação
 - A utilização da aplicação revela-se altamente intuitiva, pois a navegação é feita com o mouse e, ainda, todos os controles estão listados ao abrir o menu de "Configurações". De todo modo, são eles: 
-* Mover: WASD
-* Pular: Espaco
-* Correr: Shift
-* Pegar: E
-* Lanterna: F
-* Mutar Musicas: M
-* Trocar Camera de Seguranca: <-/-> 
-* Trocar Modo das Cameras de Seguranca: 1/2
+    * Mover: WASD
+    * Pular: Espaco
+    * Correr: Shift
+    * Pegar: E
+    * Lanterna: F
+    * Mutar Musicas: M
+    * Trocar Camera de Seguranca: <-/-> 
+    * Trocar Modo das Cameras de Seguranca: 1/2
 - O objetivo da aplicação é chegar no final.
 
 # Passos necessários para compilação e execução da aplicação
