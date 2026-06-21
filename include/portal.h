@@ -132,11 +132,12 @@ public:
                         glm::vec3& velocity,
                         float& theta, float& phi) const;
 
-    // --- Renderização see-through (stencil, 'depth' níveis de recursão) ---
-    // stencilOffset: deslocamento nos stencil refs (pares consecutivos usam
-    // 1/2, 3/4, 5/6, …).
+    // --- Renderização see-through (stencil) ---
+    // 'depth' é a profundidade da recursão ("hall of mirrors"). A marcação de
+    // stencil é auto-limpante (INCR/DECR), então cada par é independente — não há
+    // mais deslocamento de refs entre pares.
     void renderViews(const glm::mat4& view, const glm::mat4& projection,
-                     int depth = 1, int stencilOffset = 0) const;
+                     int depth = 1) const;
     // Desenha as superfícies/molduras dos portais (após a cena principal).
     void renderSurfaces() const;
 
@@ -150,10 +151,28 @@ private:
                                  const glm::vec3& position) const;
     // Reinicializa os lados guardados no estado a partir da posição atual.
     void resetSides(PortalCrossingState& state, const glm::vec3& position) const;
+    // Núcleo da travessia compartilhado por teleportIfCrossed/teleportPlayer: se
+    // a entidade cruzou um portal, teleporta posição e (se dada) velocidade, e
+    // devolve em 'dirMatrix' a matriz de direção (com flip de 180°) para o
+    // chamador transformar sua orientação. Devolve false se não cruzou.
+    bool teleportCore(PortalCrossingState& state, glm::vec3& position,
+                      glm::vec3* velocity, glm::mat4& dirMatrix) const;
 
-    // Renderiza a vista vista por UM portal (recursivo, controlado por 'depth').
+    // Renderiza a vista vista por UM portal, recursivamente (hall of mirrors).
+    // 'depth' é o número de níveis restantes; 'level' é o valor de stencil deste
+    // nível (1 no topo, crescendo a cada recursão). Chame com level=1.
     void renderOneView(const Portal& portal, const glm::mat4& view,
-                       const glm::mat4& projection, int depth, int stencilRef) const;
+                       const glm::mat4& projection, int depth, int level) const;
+    // Carimba o quad do portal no stencil (sem escrever cor nem profundidade),
+    // para marcar (INCR) e desmarcar (DECR) a janela aninhada de um nível.
+    // 'compareRef' é comparado com GL_EQUAL; 'stencilOp'/'depthFunc' são enums de
+    // GL (guardados como unsigned int — ver nota sobre <glad.h> no topo).
+    void stampStencil(const Portal& portal, const glm::mat4& view, int compareRef,
+                      unsigned int stencilOp, unsigned int depthFunc) const;
+    // Desenha as molduras (anel emissivo) dos dois portais com a 'view' e o
+    // estado de stencil/profundidade já configurados pelo chamador. Usado tanto
+    // na vista real (renderSurfaces) quanto em cada nível da recursão.
+    void drawFramePair() const;
     // Desenha o quad de um portal (para stencil ou superfície) com sua model matrix.
     void drawPortalQuad(const Portal& portal) const;
 };
