@@ -2231,15 +2231,18 @@ int main(int argc, char* argv[])
 
         // Portais: re-renderiza a cena pela câmera virtual recortada na janela de
         // cada portal (efeito see-through) e desenha suas superfícies/molduras.
+        // O 3º argumento é a profundidade de recursão ("hall of mirrors"): o
+        // efeito só aparece em pares que se encaram. Custo ~linear no nível.
         if (g_GameStarted && g_CameraMode == CAMERA_FPS)
         {
-            g_Portals.renderViews(view, projection, 1, 0);
+            const int kPortalRecursionDepth = 3;
+            g_Portals.renderViews(view, projection, kPortalRecursionDepth);
             g_Portals.renderSurfaces();
 
-            g_Portals2.renderViews(view, projection, 1, 2);
+            g_Portals2.renderViews(view, projection, kPortalRecursionDepth);
             g_Portals2.renderSurfaces();
 
-            g_Portals3.renderViews(view, projection, 1, 4);
+            g_Portals3.renderViews(view, projection, kPortalRecursionDepth);
             g_Portals3.renderSurfaces();
         }
 

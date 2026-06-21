@@ -151,9 +151,11 @@ private:
     // Reinicializa os lados guardados no estado a partir da posição atual.
     void resetSides(PortalCrossingState& state, const glm::vec3& position) const;
 
-    // Renderiza a vista vista por UM portal (recursivo, controlado por 'depth').
+    // Renderiza a vista vista por UM portal, recursivamente (hall of mirrors).
+    // 'depth' é o número de níveis restantes; 'level' é o valor de stencil deste
+    // nível (1 no topo, crescendo a cada recursão). Chame com level=1.
     void renderOneView(const Portal& portal, const glm::mat4& view,
-                       const glm::mat4& projection, int depth, int stencilRef) const;
+                       const glm::mat4& projection, int depth, int level) const;
     // Desenha o quad de um portal (para stencil ou superfície) com sua model matrix.
     void drawPortalQuad(const Portal& portal) const;
 };

@@ -293,30 +293,45 @@ void PortalPair::drawPortalQuad(const Portal& portal) const
 }
 
 void PortalPair::renderOneView(const Portal& portal, const glm::mat4& view,
-                               const glm::mat4& projection, int depth, int stencilRef) const
+                               const glm::mat4& projection, int depth, int level) const
 {
-    (void)depth; // 1 nível: uma única passagem por portal (sem recursão).
+    // Renderização recursiva (hall of mirrors DENTRO do par): olhando por
+    // 'portal' vê-se a sala do par dele e, nela, o próprio 'portal' de novo —
+    // repetindo a vista 'depth' níveis. A recursão é uma CADEIA (segue sempre o
+    // mesmo portal), então cada nível aplica de novo a MESMA transitionMatrix:
+    // a câmera do nível k é M^k * câmera_real.
+    //
+    // Aninhamento via stencil auto-limpante (algoritmo canônico):
+    //   • descendo, INCR marca a janela aninhada (stencil: level-1 -> level);
+    //   • subindo, DECR a desfaz (level -> level-1).
+    // Ao retornar do topo o stencil volta a 0 — sem interferência entre portais
+    // nem entre os pares, dispensando deslocamentos de ref por par.
+    (void)projection; // a projeção (FOV) não muda entre níveis; só a 'view'.
+    if (depth <= 0) return;
     const Portal& dest = other(portal);
 
-    // ---- 1) Marca a janela do portal no stencil (onde o quad está visível) ----
+    // ---- 1) Marca a janela aninhada no stencil ----
+    // INCR só onde o pai já está marcado (stencil == level-1): o nível 1 parte
+    // do fundo (0); os mais profundos partem da janela do nível anterior. O quad
+    // é posicionado pela 'view' DESTE nível (onde o portal reaparece na cena já
+    // desenhada). LEQUAL: a parede do portal (desenhada por DrawScene) está na
+    // mesma profundidade; LESS falharia. A oclusão por geometria mais próxima é
+    // preservada.
     glEnable(GL_STENCIL_TEST);
     glStencilMask(0xFF);
-    glStencilFunc(GL_ALWAYS, stencilRef, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    glStencilFunc(GL_EQUAL, level - 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    glDepthMask(GL_FALSE);                 // não grava profundidade ainda
-    // Usamos LEQUAL porque DrawScene() já escreveu o quad do portal no depth
-    // buffer (mesma profundidade). LESS falharia e o stencil jamais seria
-    // marcado. LEQUAL preserva a oclusão: geometria mais próxima (ex.: caixa
-    // entre o jogador e o portal) continua impedindo a marcação.
+    glDepthMask(GL_FALSE);
     glUniform1i(g_PortalGL.portalPassUniform, 0); // stencil: mantém dentro da elipse
     glDepthFunc(GL_LEQUAL);
+    glUniformMatrix4fv(g_PortalGL.viewUniform, 1, GL_FALSE, glm::value_ptr(view));
     drawPortalQuad(portal);
 
-    // ---- 2) Limpa a profundidade dentro da janela (stencil==ref) ----
-    // Empurra o depth para o "far" (1.0) na região do portal, para a vista
-    // virtual poder desenhar em qualquer profundidade.
-    glStencilFunc(GL_EQUAL, stencilRef, 0xFF);
+    // ---- 2) Limpa a profundidade dentro da janela (stencil == level) ----
+    // Empurra o depth para o "far" (1.0) na elipse, para a vista virtual poder
+    // desenhar em qualquer profundidade.
+    glStencilFunc(GL_EQUAL, level, 0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_ALWAYS);
@@ -325,29 +340,24 @@ void PortalPair::renderOneView(const Portal& portal, const glm::mat4& view,
     glDepthRange(0.0f, 1.0f);
     glDepthFunc(GL_LESS);
 
-    // ---- 3) Renderiza a CENA pela câmera virtual, recortada na janela ----
-    // A câmera virtual é a câmera real transformada pelo portal, usando a
-    // mesma transitionMatrix (com giro de 180° no eixo Y) tanto para posição
-    // quanto para direção. O giro no espaço local do portal de origem:
-    //   • nega Z → coloca a câmera no lado OPOSTO do portal de destino (fora
-    //     da sala, olhando através dele);
-    //   • nega X → compensa right() opostos entre os dois portais, preservando
-    //     a posição lateral e fazendo a câmera virtual espelhar exatamente o
-    //     movimento da câmera real no mundo (a parte linear da composição
-    //     dest_R * flipY * source_R⁻¹ é a identidade).
-    glm::mat4 V = view;
-    // Extrai posição da câmera real a partir de V⁻¹.
-    glm::vec3 realEye = glm::vec3(glm::inverse(V) * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    glm::vec3 realFwd = -glm::vec3(V[0][2], V[1][2], V[2][2]);
-    glm::vec3 realUp  =  glm::vec3(V[0][1], V[1][1], V[2][1]);
+    // ---- 3) Câmera virtual deste nível: M aplicada à câmera de 'view' ----
+    // O giro de 180° (eixo Y local) embutido em M coloca a câmera no lado oposto
+    // do portal de destino, olhando através dele, e espelha exatamente o
+    // movimento da câmera real (a parte linear de dest_R * flipY * source_R⁻¹ é
+    // a identidade).
+    glm::vec3 realEye = glm::vec3(glm::inverse(view) * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    glm::vec3 realFwd = -glm::vec3(view[0][2], view[1][2], view[2][2]);
+    glm::vec3 realUp  =  glm::vec3(view[0][1], view[1][1], view[2][1]);
     glm::mat4 M = transitionMatrix(portal, dest);
     glm::vec3 virtEye = glm::vec3(M * glm::vec4(realEye, 1.0f));
     glm::vec3 virtFwd = glm::vec3(M * glm::vec4(realFwd, 0.0f));
     glm::vec3 virtUp  = glm::vec3(M * glm::vec4(realUp,  0.0f));
     glm::mat4 virtualView = glm::lookAt(virtEye, virtEye + virtFwd, virtUp);
 
+    // ---- 4) Renderiza a CENA deste nível, recortada na janela ----
     // Plano de recorte (mundo): mantém só o lado da sala do portal de destino,
-    // descartando o que está atrás dele (entre a câmera virtual e o destino).
+    // descartando o que está atrás dele. É o MESMO plano em todos os níveis,
+    // pois sempre renderizamos o mundo real a partir de uma câmera deslocada.
     glm::vec3 n = glm::normalize(dest.normal);
     glm::vec4 clipPlane(n, -glm::dot(dest.center, n) - 0.001f);
 
@@ -356,16 +366,55 @@ void PortalPair::renderOneView(const Portal& portal, const glm::mat4& view,
     glEnable(GL_CLIP_DISTANCE0);
 
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glStencilFunc(GL_EQUAL, stencilRef, 0xFF);   // só dentro da janela
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    glStencilFunc(GL_EQUAL, level, 0xFF);   // só dentro da janela deste nível
     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
     if (g_PortalGL.drawScene) g_PortalGL.drawScene();
 
-    // ---- 4) Restaura estado para a janela do próximo portal ----
     glDisable(GL_CLIP_DISTANCE0);
     glm::vec4 noClip(0.0f);
     glUniform4fv(g_PortalGL.clipPlaneUniform, 1, glm::value_ptr(noClip));
+
+    // ---- 4b) Molduras (bordas azul/laranja) DESTE nível ----
+    // O DrawScene não desenha as superfícies dos portais (só a parede atrás);
+    // sem isto os níveis aninhados mostrariam o see-through sem borda. Desenhamos
+    // ambas as molduras como em renderSurfaces, mas pela câmera virtual deste
+    // nível e confinadas à sua janela (stencil == level já está ativo). A borda é
+    // o anel FORA da elipse (portalPass=1 descarta dentro), então sobrevive ao
+    // recorte que o passo 5 fará na elipse. LEQUAL respeita a oclusão pela cena
+    // recém-desenhada; viewUniform ainda é a virtualView do passo 4.
+    glUniform1i(g_PortalGL.portalPassUniform, 1); // moldura: descarta dentro da elipse
+    glDepthFunc(GL_LEQUAL);
+    drawPortalQuad(blue);
+    drawPortalQuad(orange);
+    glUniform1i(g_PortalGL.portalPassUniform, 0);
+    glDepthFunc(GL_LESS);
+
+    // ---- 5) Recursão: desce um nível pela câmera virtual ----
+    // O portal reaparece DENTRO da cena recém-desenhada (passo 4); a chamada
+    // filha esculpe a próxima janela aninhada e sobrescreve só essa região com a
+    // vista mais profunda. O nível mais raso continua íntegro fora dela.
+    if (depth > 1)
+        renderOneView(portal, virtualView, projection, depth - 1, level + 1);
+
+    // ---- 6) Desfaz a marca deste nível (DECR: level -> level-1) ----
+    // Posiciona o quad pela 'view' deste nível (mesma região do passo 1).
+    // GL_ALWAYS + colorMask/depthMask desligados: mexe SÓ no stencil, sem tocar
+    // a cor (a vista já desenhada) nem a profundidade.
     glUniformMatrix4fv(g_PortalGL.viewUniform, 1, GL_FALSE, glm::value_ptr(view));
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDepthMask(GL_FALSE);
+    glDepthFunc(GL_ALWAYS);
+    glStencilFunc(GL_EQUAL, level, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_DECR);
+    drawPortalQuad(portal);
+
+    // Restaura o estado padrão de cor/profundidade para o continuação do laço.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
 }
 
 void PortalPair::renderViews(const glm::mat4& view, const glm::mat4& projection,
@@ -373,10 +422,13 @@ void PortalPair::renderViews(const glm::mat4& view, const glm::mat4& projection,
 {
     if (!g_PortalGL.drawScene || !g_PortalGL.drawPlane) return;
 
-    // Refs de stencil distintas por portal (+ stencilOffset) evitam
-    // interferência entre pares de portais (par 1 → 1/2, par 2 → 3/4, …).
-    renderOneView(blue,   view, projection, depth, 1 + stencilOffset);
-    renderOneView(orange, view, projection, depth, 2 + stencilOffset);
+    // A recursão é auto-limpante (INCR ao descer, DECR ao subir): cada portal
+    // começa do fundo (stencil 0) e o devolve a 0 ao terminar. Por isso não há
+    // mais interferência entre portais nem entre pares, e o antigo stencilOffset
+    // tornou-se desnecessário (mantido na assinatura por compatibilidade).
+    (void)stencilOffset;
+    renderOneView(blue,   view, projection, depth, 1);
+    renderOneView(orange, view, projection, depth, 1);
 
     // Estado limpo para a cena/HUD que vem depois.
     glDisable(GL_STENCIL_TEST);
