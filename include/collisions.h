@@ -78,6 +78,19 @@ struct SceneState {
 };
 
 // ---------------------------------------------------------------------------
+//  Geometria do cenário necessária para construir o CollisionWorld. O chamador
+//  (main) lê as bboxes locais de g_VirtualScene e as model matrices (com
+//  Matrix_*) e injeta aqui, mantendo o módulo desacoplado de SceneObject e de
+//  matrices.h.
+// ---------------------------------------------------------------------------
+struct CollisionSceneGeometry {
+    glm::vec3 buttonMin, buttonMax;   glm::mat4 buttonModel; // botão (AABB de mundo)
+    glm::vec3 doorMin,   doorMax;     glm::mat4 doorModel;   // porta 2 fechada
+    glm::vec3 boxLocalMin,   boxLocalMax;    // "Cube"  (cache p/ AABB dinâmica)
+    glm::vec3 radioLocalMin, radioLocalMax;  // "Shell" (cache p/ AABB dinâmica)
+};
+
+// ---------------------------------------------------------------------------
 //  Funções geométricas puras (sem dependência de estado global).
 // ---------------------------------------------------------------------------
 
@@ -118,5 +131,25 @@ bool IsButtonTriggered(const SceneState& s, const glm::vec3& playerPos);
 
 // Verifica se há piso imediatamente abaixo dos pés do jogador (permite pular).
 bool IsPlayerOnGround(const CollisionWorld& w, const SceneState& s, const glm::vec3& playerPos);
+
+// ---------------------------------------------------------------------------
+//  Resposta a colisão (movimento do jogador). Modificam 'playerPos' (e a
+//  velocidade vertical) diretamente, em vez de globais.
+// ---------------------------------------------------------------------------
+
+// Aplica um deslocamento vertical 'dy' (gravidade/pulo). Se a posição candidata
+// colide, zera 'velY' e o jogador permanece onde está.
+void TryMovePlayerVertical(const CollisionWorld& w, const SceneState& s,
+                           glm::vec4& playerPos, float& velY, float dy);
+
+// Move o jogador por (dx, dz) testando cada eixo separadamente (efeito de
+// "deslizar" em paredes), com subida automática de degraus baixos.
+void TryMovePlayer(const CollisionWorld& w, const SceneState& s,
+                   glm::vec4& playerPos, float dx, float dz);
+
+// ---------------------------------------------------------------------------
+//  Construção do mundo estático de colisão a partir da geometria do cenário.
+// ---------------------------------------------------------------------------
+CollisionWorld BuildCollisionWorld(const CollisionSceneGeometry& geo);
 
 #endif // _COLLISIONS_H

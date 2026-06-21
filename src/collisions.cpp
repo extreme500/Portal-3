@@ -284,3 +284,240 @@ bool IsPlayerOnGround(const CollisionWorld& w, const SceneState& s, const glm::v
     const float probe_dist = 0.05f;
     return PlayerCollidesAt(w, s, glm::vec3(playerPos.x, playerPos.y - probe_dist, playerPos.z));
 }
+
+// ----------------------------------------------------------------------------
+// Resposta a colisão: movimento do jogador.
+// ----------------------------------------------------------------------------
+
+// Aplica um deslocamento vertical 'dy' ao jogador (gravidade/pulo), verificando
+// colisão contra o cenário. Se a posição candidata colide (chão ao cair, teto
+// ao subir), a velocidade vertical é zerada e o jogador permanece onde está.
+void TryMovePlayerVertical(const CollisionWorld& w, const SceneState& s,
+                           glm::vec4& playerPos, float& velY, float dy)
+{
+    glm::vec3 candidate = glm::vec3(playerPos.x, playerPos.y + dy, playerPos.z);
+    if (!PlayerCollidesAt(w, s, candidate))
+        playerPos.y = candidate.y;
+    else
+        velY = 0.0f;
+}
+
+// Move o jogador pelo deslocamento desejado (dx, dz), testando e aplicando
+// cada eixo separadamente. Isso produz o efeito de "deslizar" ao longo de
+// paredes: se o movimento em um eixo causa colisão, ele é descartado, mas o
+// movimento no outro eixo continua sendo aplicado normalmente.
+void TryMovePlayer(const CollisionWorld& w, const SceneState& s,
+                   glm::vec4& playerPos, float dx, float dz)
+{
+    // Define a altura máxima de um degrau que o jogador consegue subir apenas andando.
+    const float MAX_STEP_HEIGHT = 0.3f;
+
+    // Tenta mover no eixo X
+    glm::vec3 candidate_x = glm::vec3(playerPos.x + dx, playerPos.y, playerPos.z);
+    if (!PlayerCollidesAt(w, s, candidate_x))
+    {
+        playerPos.x = candidate_x.x;
+    }
+    else if (IsPlayerOnGround(w, s, glm::vec3(playerPos)))
+    {
+        // Bateu em X! O jogador está no chão, então testamos a posição mais alta (o degrau)
+        glm::vec3 candidate_step_x = glm::vec3(playerPos.x + dx, playerPos.y + MAX_STEP_HEIGHT, playerPos.z);
+        if (!PlayerCollidesAt(w, s, candidate_step_x))
+        {
+            playerPos.x = candidate_step_x.x;
+            playerPos.y = candidate_step_x.y; // Levanta o jogador para cima do obstáculo
+        }
+    }
+
+    // Tenta mover no eixo Z
+    glm::vec3 candidate_z = glm::vec3(playerPos.x, playerPos.y, playerPos.z + dz);
+    if (!PlayerCollidesAt(w, s, candidate_z))
+    {
+        playerPos.z = candidate_z.z;
+    }
+    else if (IsPlayerOnGround(w, s, glm::vec3(playerPos)))
+    {
+        // Bateu em Z! Testamos a subida no degrau também.
+        glm::vec3 candidate_step_z = glm::vec3(playerPos.x, playerPos.y + MAX_STEP_HEIGHT, playerPos.z + dz);
+        if (!PlayerCollidesAt(w, s, candidate_step_z))
+        {
+            playerPos.z = candidate_step_z.z;
+            playerPos.y = candidate_step_z.y;
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Construção do mundo estático de colisão.
+// ----------------------------------------------------------------------------
+
+// Monta o CollisionWorld com as AABBs de mundo do cenário estático contra o
+// qual as entidades colidem: paredes/chão/teto das três salas (definidos
+// manualmente, já que a geometria é simples e alinhada aos eixos), botão, porta
+// fechada, pilar e bolo. As bboxes locais e model matrices de objetos vêm em
+// 'geo' (preenchido pelo chamador), mantendo este módulo livre de g_VirtualScene
+// e de matrices.h.
+CollisionWorld BuildCollisionWorld(const CollisionSceneGeometry& geo)
+{
+    CollisionWorld world;
+
+    // Espessura "fake" usada para dar volume às paredes/chão/teto no teste de colisão
+    const float wall_t = 0.1f;
+
+    // Limites das salas (x,z) e altura (y), conforme mapeamento da cena
+    const float sala1_min = -4.0f, sala1_max = 4.0f;
+    const float sala2_min = 4.2f,  sala2_max = 12.0f;
+    float s3_xmin = 6.0f, s3_xmax = 10.0f;
+    float s3_zmin = 6.2f, s3_zmax = 10.1f;
+    const float y_min = -1.0f, y_max = 3.0f;
+
+    // A porta entre a Sala 1 e a Sala 2 (centrada em Z = 0)
+    const float porta_z = 0.0f;
+    // A nova porta no final da Sala 2 (centrada em X = 8.0)
+    const float porta2_x = 8.0f;
+
+    const float porta_meia_largura = 0.6f;
+    const float porta_topo_y = 0.5f;
+
+    // Cria uma laje retangular de parede (AABB)
+    auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi)
+    {
+        if (z_lo < z_hi && x_lo < x_hi)
+            world.aabbs.push_back({ glm::vec3(x_lo, y_lo, z_lo), glm::vec3(x_hi, y_hi, z_hi) });
+    };
+
+    // Corta um buraco em uma parede que corre paralela ao eixo Z
+    auto add_wall_with_doorway = [&](float x_lo, float x_hi, float z_lo, float z_hi)
+    {
+        add_wall_slab(x_lo, x_hi, z_lo, porta_z - porta_meia_largura, y_min, y_max);
+        add_wall_slab(x_lo, x_hi, porta_z + porta_meia_largura, z_hi, y_min, y_max);
+        add_wall_slab(x_lo, x_hi, porta_z - porta_meia_largura, porta_z + porta_meia_largura, porta_topo_y, y_max);
+    };
+
+    // Corta um buraco em uma parede que corre paralela ao eixo X (NOVO)
+    auto add_wall_with_doorway_z = [&](float x_lo, float x_hi, float z_lo, float z_hi)
+    {
+        add_wall_slab(x_lo, porta2_x - porta_meia_largura, z_lo, z_hi, y_min, y_max);
+        add_wall_slab(porta2_x + porta_meia_largura, x_hi, z_lo, z_hi, y_min, y_max);
+        add_wall_slab(porta2_x - porta_meia_largura, porta2_x + porta_meia_largura, z_lo, z_hi, porta_topo_y, y_max);
+    };
+
+    // Constrói a sala inteira. Adicionamos o parâmetro 'porta_em_z_max' com valor padrão 'false'.
+    auto add_room_aabbs = [&](float x_min, float x_max, float z_min, float z_max, bool porta_em_x_min, bool porta_em_x_max, bool porta_em_z_max = false)
+    {
+        // Chão e teto
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min - wall_t, y_min);
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_max, y_max + wall_t);
+
+        // Parede em x = x_min
+        if (porta_em_x_min)
+            add_wall_with_doorway(x_min - wall_t, x_min, z_min - wall_t, z_max + wall_t);
+        else
+            add_wall_slab(x_min - wall_t, x_min, z_min - wall_t, z_max + wall_t, y_min, y_max);
+
+        // Parede em x = x_max
+        if (porta_em_x_max)
+            add_wall_with_doorway(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t);
+        else
+            add_wall_slab(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min, y_max);
+
+        // Parede em z = z_min (Fundos)
+        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_min, y_min, y_max);
+
+        // Parede em z = z_max (Frente)
+        if (porta_em_z_max)
+            add_wall_with_doorway_z(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t);
+        else
+            add_wall_slab(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t, y_min, y_max);
+    };
+
+    // Chão e teto físicos da Sala 3
+    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_min - wall_t, y_min);
+    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_max, y_max + wall_t);
+
+    // Parede Lateral Direita da Sala 3 (X = 6.0)
+    add_wall_slab(s3_xmin - wall_t, s3_xmin, s3_zmin - wall_t, s3_zmax + wall_t, y_min, y_max);
+
+    // Parede Lateral Esquerda da Sala 3 (X = 10.0)
+    add_wall_slab(s3_xmax, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_min, y_max);
+
+    // Parede da Frente da Sala 3 (Z = 10.1)
+    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmax, s3_zmax + wall_t, y_min, y_max);
+
+    // Parede de Trás com Conexão/Porta da Sala 3 (Z = 6.2)
+    // Deixa o vão livre entre X = 7.4 e X = 8.6 para você passar vindo da Sala 2!
+    add_wall_slab(s3_xmin - wall_t, porta2_x - porta_meia_largura, s3_zmin - wall_t, s3_zmin, y_min, y_max);
+    add_wall_slab(porta2_x + porta_meia_largura, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmin, y_min, y_max);
+    add_wall_slab(porta2_x - porta_meia_largura, porta2_x + porta_meia_largura, s3_zmin - wall_t, s3_zmin, porta_topo_y, y_max);
+
+    // Sala 1: x,z em [-4,+4] — porta na parede x=+4
+    add_room_aabbs(sala1_min, sala1_max, sala1_min, sala1_max, false, true);
+
+    // Sala 2: x em [+4.2,+12], z em [-4,+6] — porta na parede x=+4.2 E porta na parede z=+6.0
+    // O último 'true' ativa o novo buraco que criamos!
+    add_room_aabbs(sala2_min, sala2_max, -4.0f, 6.0f, true, false, true);
+
+    // Paredes internas da Sala 1 ("prisão" central de vidro + parede sólida)
+    // Cada parede é um the_plane ([-1,1] em local) com as rotações aplicadas na renderização,
+    // resultando em lajes verticais de espessura wall_t centradas nas posições abaixo.
+    // Parede sólida em x=+1 (Agora a colisão começa exatamentente onde o visual começa!)
+    world.aabbs.push_back({ glm::vec3(1.0f, y_min, -1.0f), glm::vec3(1.0f + wall_t, y_max, 1.0f) });
+    // Parede de vidro em x=-1
+    world.aabbs.push_back({ glm::vec3(-1.0f - wall_t, y_min, -1.0f), glm::vec3(-1.0f + wall_t, y_max, 1.0f) });
+    // Parede de vidro em z=+1
+    world.aabbs.push_back({ glm::vec3(-1.0f, y_min, 1.0f - wall_t), glm::vec3(1.0f, y_max, 1.0f + wall_t) });
+    // Parede de vidro em z=-1
+    world.aabbs.push_back({ glm::vec3(-1.0f, y_min, -1.0f - wall_t), glm::vec3(1.0f, y_max, -1.0f + wall_t) });
+
+    // Botão: AABB de mundo (model matrix e bbox local vêm em geo).
+    world.aabbs.push_back(ComputeWorldAABB(geo.buttonMin, geo.buttonMax, geo.buttonModel));
+
+    // Paredes Diagonais:
+    // Parede diagonal da Sala 2 (Centro: 11.0, -2.7 | Rotação: -45 graus | Escala: 2.0)
+    // Calculamos as extremidades aplicando o seno/cosseno de 45 graus (0.707) * escala (2.0) = 1.414
+    float offsetX = 1.414f;
+    float offsetZ = 1.414f;
+
+    world.lines.push_back({
+        glm::vec2(11.0f - offsetX, -2.7f - offsetZ), // Ponto 1 (~ 9.586, -4.114)
+        glm::vec2(11.0f + offsetX, -2.7f + offsetZ), // Ponto 2 (~ 12.414, -1.286)
+        y_min,                                       // Chão (-1.0f)
+        y_max                                        // Teto (3.0f)
+    });
+
+    // Hitbox dinâmica da porta 2 (Fechada): AABB de mundo (model matrix em geo).
+    world.closedDoor = ComputeWorldAABB(geo.doorMin, geo.doorMax, geo.doorModel);
+
+    // Hitboxes Físicas do Pilar e do Bolo (Sala 3)
+    // O pilar está centralizado em X=8.0 e Z=8.15.
+    // Com a escala de 0.2, os limites horizontais são exatamente:
+    // X: 8.0 - 0.2 até 8.0 + 0.2 (7.8f a 8.2f)
+    // Z: 8.15 - 0.2 até 8.15 + 0.2 (7.95f a 8.35f)
+    // E a altura vai do chão (-1.0f) até o topo do pilar (-0.2f)
+    world.aabbs.push_back({
+        glm::vec3(7.8f, -1.0f, 7.95f),  // Mínimo (X, Y, Z)
+        glm::vec3(8.2f, -0.2f, 8.35f)   // Máximo (X, Y, Z)
+    });
+
+    // O bolo está em cima do pilar (Y = -0.2f) com escala 0.1.
+    // X: 8.0 - 0.1 até 8.0 + 0.1 (7.9f a 8.1f)
+    // Z: 8.15 - 0.1 até 8.15 + 0.1 (8.05f a 8.25f)
+    // A altura vai do topo do pilar (-0.2f) até o topo das velas (cerca de 0.0f)
+    world.aabbs.push_back({
+        glm::vec3(7.9f, -0.2f, 8.05f),  // Mínimo (X, Y, Z)
+        glm::vec3(8.1f,  0.0f, 8.25f)   // Máximo (X, Y, Z)
+    });
+
+    // Dimensões do cilindro do jogador (usa os defaults de PlayerCollider).
+    world.player = PlayerCollider{};
+
+    // Cacheia as AABBs locais (carregadas pelo tinyobj) da caixa ("Cube") e do
+    // rádio ("Shell"). PlayerCollidesAt as transforma a cada frame pela model
+    // matrix dinâmica (vinda do SceneState) para obter a AABB de mundo precisa.
+    world.boxLocalMin   = geo.boxLocalMin;
+    world.boxLocalMax   = geo.boxLocalMax;
+    world.radioLocalMin = geo.radioLocalMin;
+    world.radioLocalMax = geo.radioLocalMax;
+
+    return world;
+}
