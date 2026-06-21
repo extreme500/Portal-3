@@ -1,0 +1,894 @@
+=================================================================
+ SESSÃO: agent-af5d3dfa04ec589bc
+ Repositório: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3
+ Última modificação: 2026-06-20 17:42:02
+=================================================================
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:24.575Z]
+-----------------------------------------------------------------
+Estou trabalhando num projeto de Computação Gráfica em C++/OpenGL (UFRGS) em /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3. Vou implementar "portais" e um requisito crucial é que a instanciação de portais seja MUITO intuitiva e fluida para o desenvolvedor. Para isso preciso entender como o desenvolvedor atualmente adiciona objetos/entidades ao mapa/cena.
+
+Explore e me reporte com detalhes (caminhos de arquivo, números de linha, trechos de código):
+
+1. Como o mapa/cena é montado? Onde objetos são instanciados e posicionados? Procure por funções de construção de cena, std::map<std::string, SceneObject>, BuildTriangles, modelos .obj carregados.
+2. Existe alguma struct/classe que representa um objeto da cena (SceneObject, VirtualObject, Entity, GameObject)? Quais campos tem (model matrix, posição, rotação, escala, textura, id)?
+3. Como modelos .obj são carregados (tinyobjloader, ObjModel, ComputeNormals)? O que há no diretório data/?
+4. Como matrizes de modelo (Matrix_Translate, Matrix_Rotate, Matrix_Scale) são compostas para posicionar objetos? Procure pela biblioteca matrices.h/matrices.cpp da UFRGS (funções Matrix_*).
+5. Há um sistema de texturas/materiais por objeto?
+6. Quais paredes/superfícies existem no mapa e como são representadas (para que o desenvolvedor possa "colar" um portal numa parede)?
+7. Mostre exemplos concretos de como objetos existentes são declarados/posicionados hoje (o padrão a seguir).
+
+Quero projetar uma API de criação de portais que combine com os padrões existentes do projeto. Liste arquivos e padrões-chave. Seja minucioso (very thorough).
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:26.542Z]
+-----------------------------------------------------------------
+Vou explorar minuciosamente o projeto para entender como a cena é construída e os padrões de instanciação de objetos. Deixa eu começar com uma visão geral da estrutura do projeto.
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:27.096Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: find /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3 -type f -name "*.h" -o -name "*.cpp" | head -20
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:27.142Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:28.879Z]
+-----------------------------------------------------------------
+Vou explorar os arquivos principais do projeto:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:29.141Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: ls -la /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:29.195Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:31.184Z]
+-----------------------------------------------------------------
+Vou examinar o arquivo main.cpp e buildtriangles.cpp que provavelmente têm a lógica principal:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:31.752Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:32.132Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:34.147Z]
+-----------------------------------------------------------------
+Vou continuar lendo o arquivo main.cpp para ver como objetos são posicionados:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:35.731Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "g_VirtualScene\|Matrix_\|DrawVirtualObject\|Pos_Player\|g_BoxPosition\|g_RadioPosition" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -80
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:35.795Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:37.538Z]
+-----------------------------------------------------------------
+Vou examinar agora o buildtriangles.cpp para entender como a cena é montada:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:38.704Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/buildtriangles.cpp
+  limit: 150
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:38.724Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:40.840Z]
+-----------------------------------------------------------------
+Deixa eu procurar pela função BuildTrianglesAndAddToVirtualScene:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:41.938Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "BuildTrianglesAndAddToVirtualScene\|void BuildTrianglesAndAddToVirtualScene" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -5
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:41.997Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:44.381Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "^void BuildTrianglesAndAddToVirtualScene\|^void ComputeNormals" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:44.438Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:46.992Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2925
+  limit: 200
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:47.018Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:49.079Z]
+-----------------------------------------------------------------
+Agora vou ver como objetos são desenhados (DrawVirtualObject) e procurar por exemplos de texturas:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:50.253Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "^void DrawVirtualObject\|^void SetObjectId\|^void BindTexturesForObject" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:50.310Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:52.633Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2569
+  limit: 150
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:52.650Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:54.822Z]
+-----------------------------------------------------------------
+Agora vou verificar como as matrizes são usadas e procurar pelas definições de Matrix_*:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:55.628Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/include/matrices.h
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:55.642Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:57.957Z]
+-----------------------------------------------------------------
+Agora vou procurar pelos IDs de objetos (object_id):
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:59.365Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "^#define.*WALL\|^#define.*FLOOR\|^#define.*BUTTON\|^#define.*DOOR\|^#define.*CUBE\|^#define.*SEC_CAM\|^#define.*RADIO" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -40
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:59.448Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:01.539Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "enum.*{.*WALL\|enum.*{.*FLOOR" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:01.589Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:03.675Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "WALL.*=\|FLOOR.*=\|BUTTON.*=" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -30
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:03.737Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:06.056Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -B50 "case WALL: case WALL_2" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | grep "enum\|#define" | head -50
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:06.113Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:09.010Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2520
+  limit: 60
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:09.037Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:11.940Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -B200 "case WALL: case WALL_2" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | grep -E "^#define|enum.*\{" | tail -40
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:12.006Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:14.449Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "WALL\|FLOOR\|BUTTON\|DOOR\|SEC_CAM\|RADIO" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | grep -E "= [0-9]" | head -30
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:14.503Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:16.332Z]
+-----------------------------------------------------------------
+Vou procurar diretamente pelos #define ou enum que definem esses IDs:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:17.088Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: head -2500 /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | grep -E "#define|enum" | head -50
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:17.147Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:19.268Z]
+-----------------------------------------------------------------
+Perfeito! Agora vou procurar por SetupCollisionAABBs e dados de colisão:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:19.890Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "^void SetupCollisionAABBs" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:19.943Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:22.452Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2354
+  limit: 250
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:22.473Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:25.003Z]
+-----------------------------------------------------------------
+Agora vou examinar o diretório data para entender a estrutura:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:25.538Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: ls -la /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/data/
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:25.591Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:27.754Z]
+-----------------------------------------------------------------
+Agora vou procurar por exemplos específicos de como a cena de renderização coloca objetos. Vou ver como o cubo é desenhado por exemplo:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:28.976Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "CUBE\|cube\|portal_cube" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | grep -E "DrawVirtualObject|Matrix_Translate|Matrix_Rotate" | head -20
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:29.039Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:31.364Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2080
+  limit: 150
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:31.381Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:33.576Z]
+-----------------------------------------------------------------
+Agora vou procurar por exemplos de desenho na parte principal do loop de renderização (onde DrawVirtualObject é chamado):
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:34.855Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1360
+  limit: 200
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:34.869Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:37.108Z]
+-----------------------------------------------------------------
+Perfeito! Agora vou ver um exemplo da sala 2 também para ter mais detalhes:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:38.323Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1556
+  limit: 250
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:38.343Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:40.216Z]
+-----------------------------------------------------------------
+Perfeito! Agora vou checar o ComputeWorldAABB para entender como funciona:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:41.314Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "^CollisionAABB ComputeWorldAABB" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:41.368Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:44.610Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2324
+  limit: 50
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:44.619Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:47.001Z]
+-----------------------------------------------------------------
+Excelente! Agora vou verificar o arquivo utils.h para ver se há mais estruturas úteis:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:47.799Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/include/utils.h
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:47.819Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:49.939Z]
+-----------------------------------------------------------------
+Agora vou procurar por informação sobre como os portais poderia ser colocados nas paredes. Vou procurar pelas coordenadas das paredes da cena:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:50.921Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "wall\|parede\|Wall" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | grep -i "translate\|position" | head -30
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:50.967Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:53.337Z]
+-----------------------------------------------------------------
+Vou procurar pela informação de sala 3 e seus objetos:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:54.138Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1800
+  limit: 300
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:54.156Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:42:02.622Z]
+-----------------------------------------------------------------
+Perfeito! Agora tenho uma visão bem completa. Deixa eu fazer um resumo em markdown dos dados que coletei:
+
+## RELATÓRIO DETALHADO: EXPLORAÇÃO DO PROJETO PORTAL-3
+
+Realizei uma exploração minuciosa do projeto de Computação Gráfica Portal-3 (UFRGS). Aqui estão os detalhes encontrados:
+
+### 1. **ESTRUTURA DA CENA E MONTAGEM DO MAPA**
+
+**Arquivo Principal:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Localização das Coordenadas da Cena (linhas 2362-2367):**
+- **Sala 1 (1R):** X ∈ [-4.0, 4.0], Z ∈ [-4.0, 4.0]
+- **Sala 2 (2R):** X ∈ [4.2, 12.0], Z ∈ [-4.0, 6.0]
+- **Sala 3 (3R):** X ∈ [6.0, 10.0], Z ∈ [6.2, 10.1]
+- **Altura global:** Y ∈ [-1.0, 3.0] (chão = -1.0, teto = 3.0)
+
+**Função Principal de Setup:** `SetupCollisionAABBs()` (linhas 2354+)
+- Carrega AABBs (Axis-Aligned Bounding Boxes) do cenário estático
+- Define portadas entre salas
+- Define colisões físicas
+
+**Renderização da Cena:** Loop principal em `main()` (linhas 1360+)
+- Renderização por sala: Room 1 (1R), Room 2 (2R), Room 3 (3R)
+- Cada objeto chama: `glUniformMatrix4fv()` → `SetObjectId()` → `DrawVirtualObject()`
+
+### 2. **STRUCT CENA: SceneObject**
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`, linhas 262-271
+
+```cpp
+struct SceneObject
+{
+    std::string  name;              // Nome do objeto
+    size_t       first_index;       // Índice do primeiro vértice 
+    size_t       num_indices;       // Número de índices
+    GLenum       rendering_mode;    // GL_TRIANGLES, GL_TRIANGLE_STRIP, etc.
+    GLuint       vertex_array_object_id; // VAO ID
+    glm::vec3    bbox_min;          // Bounding box mínimo
+    glm::vec3    bbox_max;          // Bounding box máximo
+};
+```
+
+**Armazenamento Global:** 
+```cpp
+std::map<std::string, SceneObject> g_VirtualScene;  // (linha 279)
+```
+
+Objetos são acessados por nome string: `g_VirtualScene["Cube"]`, `g_VirtualScene["the_plane"]`, etc.
+
+### 3. **CARREGAMENTO DE MODELOS .OBJ**
+
+**Struct ObjModel (linhas 142-196):**
+```cpp
+struct ObjModel
+{
+    tinyobj::attrib_t                 attrib;     // vértices, normais, texcoords
+    std::vector<tinyobj::shape_t>     shapes;     // objetos nomeados
+    std::vector<tinyobj::material_t>  materials;  // materiais
+};
+```
+
+**Padrão de Carregamento (linhas 575-628):**
+```cpp
+ObjModel spheremodel("../../data/sphere.obj");
+ComputeNormals(&spheremodel);
+BuildTrianglesAndAddToVirtualScene(&spheremodel);
+```
+
+**Função `BuildTrianglesAndAddToVirtualScene()`** (linhas 2925-3072):
+- Lê shapes do ObjModel
+- Extrai vértices, normais, coordenadas de textura
+- Calcula bounding box local (bbox_min, bbox_max)
+- Cria VAO e vincula ao `g_VirtualScene[shape.name]`
+- Armazena `first_index` e `num_indices` para renderização
+
+**Função `ComputeNormals()`** (linhas 2808+):
+- Calcula normais de vértice se não existirem no .obj
+
+### 4. **SISTEMA DE MATRIZES DE TRANSFORMAÇÃO**
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/include/matrices.h`
+
+**Funções Disponíveis:**
+- `Matrix_Identity()` (linha 46)
+- `Matrix_Translate(tx, ty, tz)` (linha 62)
+- `Matrix_Scale(sx, sy, sz)` (linha 78)
+- `Matrix_Rotate_X(angle)` (linha 96)
+- `Matrix_Rotate_Y(angle)` (linha 116)
+- `Matrix_Rotate_Z(angle)` (linha 136)
+- `Matrix_Rotate(angle, axis)` (linha 163) - rotação arbitrária (Rodrigues)
+
+**Padrão de Composição (exemplo da linha 1362):**
+```cpp
+model = Matrix_Translate(Pos_Player.x, Pos_Player.y-1.0f, Pos_Player.z) 
+      * Matrix_Rotate_Y(g_CameraTheta + M_PI) 
+      * Matrix_Scale(1/55.0, 1/55.0, 1/55.0);
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+```
+
+**Ordem CRUCIAL:** Translate → Rotate → Scale (TRS pipeline)
+
+### 5. **SISTEMA DE TEXTURAS/MATERIAIS**
+
+**Object ID Enum (linhas ~620-660):**
+```cpp
+#define WALL    17
+#define FLOOR   18
+#define CEILING 19
+#define WALL_2  21
+#define WALL_4  22
+#define BUTTON  14
+#define DOOR    16
+#define CUBE    11
+#define SEC_CAM 23
+#define RADIO_SHELL  25
+#define RADIO_MAIN   26
+```
+
+**Função `BindTexturesForObject()` (linhas 2569-2618):**
+- Switch por object_id
+- Cada case mapeia: `diffuse = texture_index`; `aux = auxiliary_texture_index`
+- Exemplo (linha 2576):
+  ```cpp
+  case WALL: case WALL_2: case WALL_4: case DOOR_WALL: diffuse = 1; break;
+  case FLOOR: diffuse = 18; break;
+  ```
+
+**Carregamento de Texturas (linhas 538-571):**
+```cpp
+LoadTextureImage("../../data/radio/textures/Radio_Metallic.png", false); // TextureImage0
+LoadTextureImage("../../data/wall/Portal-concrete_modular_wall002.png", true); // TextureImage1
+LoadTextureImage("../../data/floor/metallic_floor.jpg", true); // TextureImage18
+```
+
+**Função `LoadTextureImage()`** (linhas 2628-2694):
+- Carrega PNG/JPG com stbi_load
+- Cria texture ID e sampler ID
+- Armazena em `g_TextureID[MAX_TEXTURES]` e `g_SamplerID[MAX_TEXTURES]`
+- Parâmetro `deveRepetir` controla GL_REPEAT vs GL_CLAMP_TO_EDGE
+
+### 6. **PAREDES E SUPERFÍCIES DO MAPA**
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Padrão de Desenho de Paredes (exemplo Sala 1, linhas 1381-1432):**
+
+| Parede | Posição | Matriz de Renderização |
+|--------|---------|------------------------|
+| Chão | Y = -1.0 | `Matrix_Translate(0, -1, 0) * Scale(4, 4, 4)` |
+| Teto | Y = 3.0 | `Matrix_Translate(0, 3, 0) * RotX(π) * Scale(4, 4, 4)` |
+| Frente | Z = -4.0 | `Matrix_Translate(0, 3, -4) * RotX(π/2) * Scale(4, 4, 4)` |
+| Trás | Z = 4.0 | `Matrix_Translate(0, 3, 4) * RotX(3π/2) * Scale(4, 4, 4)` |
+| Direita | X = 4.0 | `Matrix_Translate(4, 3, 0) * RotY(3π/2) * RotX(π/2) * Scale(2, 2, 2)` |
+| Esquerda | X = -4.0 | `Matrix_Translate(-4, 3, 0) * RotY(π/2) * RotX(π/2) * Scale(4, 4, 4)` |
+
+**Geometria Base:** Todas as paredes usam `"the_plane"` (modelo base [-1, 1] × [-1, 1])
+
+**Paredes Diagonais (Sala 2, linhas 1619-1624):**
+```cpp
+model = Matrix_Translate(11.0f, 3.0f, -2.7f) 
+      * Matrix_Rotate_Y(-M_PI_2/2) 
+      * Matrix_Rotate_X(M_PI_2) 
+      * Matrix_Scale(2.0f, 2.0f, 2.0f);
+```
+
+**Colisões de Paredes Diagonais (linhas 2471-2482):**
+```cpp
+struct CollisionLine {
+    glm::vec2 p1;           // Ponto inicial (X, Z)
+    glm::vec2 p2;           // Ponto final (X, Z)
+    float y_min;            // Base (chão)
+    float y_max;            // Topo (teto)
+};
+```
+
+### 7. **EXEMPLOS CONCRETOS DE INSTANCIAÇÃO**
+
+**Exemplo 1: Cubo Portável (linhas 1675-1689)**
+```cpp
+model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) 
+      * Matrix_Rotate_Y(g_BoxAngleY) 
+      * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+SetObjectId(CUBE_003);
+DrawVirtualObject("Cube.003");
+DrawVirtualObject("Cube.002");
+```
+**Dados:** `g_BoxPosition` (glm::vec3), `g_BoxAngleY` (float), escala fixa 1/8
+
+**Exemplo 2: Rádio (linhas 1448-1468)**
+```cpp
+model = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) 
+      * Matrix_Rotate_Y(g_RadioAngleY) 
+      * Matrix_Scale(1.0/9.0, 1.0/9.0, 1.0/9.0);
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+SetObjectId(RADIO_SHELL);
+DrawVirtualObject("Shell");
+SetObjectId(RADIO_MAIN);
+DrawVirtualObject("Radio");
+// ... múltiplos sub-objetos ...
+```
+**Dados:** `g_RadioPosition` (glm::vec3), `g_RadioAngleY` (float)
+
+**Exemplo 3: Botão Pressável (linhas 1705-1714)**
+```cpp
+float y_offset = g_IsButtonPressed ? -0.05f : 0.0f;
+model = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(2.0, 2.0, 2.0);
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+SetObjectId(BUTTON);
+DrawVirtualObject("portal_button_reduced_2");
+```
+**Dados:** Posição fixa (9.0, -1.0, -1.0), escala (2, 2, 2), offset dinâmico em Y
+
+**Exemplo 4: Porta Dinâmica (linhas 1693-1703)**
+```cpp
+model = Matrix_Translate(8.0f, -1.0f, +6.1f) 
+      * Matrix_Rotate_Y(M_PI) 
+      * Matrix_Scale(1.5f, 1.5f, 1.5f);
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+SetObjectId(DOOR);
+if (g_IsButtonPressed) {
+    DrawVirtualObject("portal_door_combined_model_2");  // Aberta
+} else {
+    DrawVirtualObject("portal_door_combined_model_1");  // Fechada
+}
+```
+
+**Exemplo 5: Bolo (linhas 1886-1898)**
+```cpp
+model = Matrix_Translate(8.0f, -0.1999f, 8.15f) 
+      * Matrix_Scale(0.1, 0.1, 0.1);
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+SetObjectId(CAKE);
+DrawVirtualObject("Sphere.004");
+SetObjectId(CAKE_CANDLE);
+DrawVirtualObject("Sphere.002");
+```
+
+### 8. **DADOS DE COLISÃO/HITBOX**
+
+**Struct CollisionAABB (linhas 390-393):**
+```cpp
+struct CollisionAABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+```
+
+**Função `ComputeWorldAABB()`** (linhas 2324-2347):
+```cpp
+CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, 
+                                const glm::mat4& model)
+{
+    // Transforma 8 cantos da bounding box local para coordenadas de mundo
+    glm::vec3 corners[8] = { ... };
+    glm::vec3 world_min = max();
+    glm::vec3 world_max = -max();
+    for (const glm::vec3& corner : corners) {
+        glm::vec3 world_corner = glm::vec3(model * glm::vec4(corner, 1.0f));
+        world_min = glm::min(world_min, world_corner);
+        world_max = glm::max(world_max, world_corner);
+    }
+    return CollisionAABB{ world_min, world_max };
+}
+```
+
+**Exemplo de Uso (linhas 2089-2098):**
+```cpp
+glm::mat4 model_cube = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) 
+                     * Matrix_Rotate_Y(g_BoxAngleY) 
+                     * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+CollisionAABB boxAABB = ComputeWorldAABB(
+    g_VirtualScene["Cube"].bbox_min, 
+    g_VirtualScene["Cube"].bbox_max, 
+    model_cube
+);
+```
+
+### 9. **ESTRUTURA DO DIRETÓRIO DATA**
+
+```
+/data/
+├── sphere.obj, bunny.obj, plane.obj     (geometrias básicas)
+├── button/source/Button.obj
+├── cake/
+│   ├── cake.obj
+│   ├── textures/cake.png, candle.png
+├── chell/source/Chell.obj               (personagem)
+├── cube/source/cube.obj
+├── door/source/Door.obj, OpenDoor.obj
+├── floor/, ceiling/, wall/              (texturas)
+├── radio/source/radio.obj
+│   ├── textures/ (22 arquivos PNG)
+├── sec_camera/source/Sec_camera.obj
+├── audio/
+│   ├── music/ (BGM, Still_Alive, Want_You_Gone, Radio)
+│   └── sfx/ (Walk1-4, Beep-in, Beep-out, Button, Door, etc.)
+└── FONTES.txt
+```
+
+### 10. **VARIÁVEIS GLOBAIS DE ESTADO DE OBJETOS**
+
+```cpp
+glm::vec4 Pos_Player;              // Posição do jogador (linha 348)
+glm::vec3 g_BoxPosition;           // Posição da caixa (linha 352)
+glm::vec3 g_RadioPosition;         // Posição do rádio (linha 85)
+float g_BoxAngleY, g_RadioAngleY;  // Rotações em Y
+bool g_IsHoldingBox, g_IsHoldingRadio;  // Estados
+float g_BoxVelocityY, g_RadioVelocityY; // Física de gravidade
+```
+
+**Reset de Cena:** `ResetScene()` (linhas 2517-2561) restaura todas as posições iniciais
+
+### 11. **PADRÃO-CHAVE PARA INSTANCIAÇÃO**
+
+**Estrutura Repetitiva de Renderização:**
+```cpp
+// 1. Construir matriz de modelo (Translate → Rotate → Scale)
+glm::mat4 model = Matrix_Translate(x, y, z) 
+               * Matrix_Rotate_Y(angle_y) 
+               * Matrix_Scale(sx, sy, sz);
+
+// 2. Enviar ao GPU
+glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
+
+// 3. Definir textura/material
+SetObjectId(OBJECT_ID_ENUM);
+
+// 4. Desenhar (pode ser múltiplas sub-geometrias)
+DrawVirtualObject("sub_mesh_name_1");
+DrawVirtualObject("sub_mesh_name_2");
+```
+
+### 12. **SISTEMA DE CÂMERAS**
+
+Dois modos suportados (linha 417-418):
+```cpp
+enum CameraMode { CAMERA_FPS, CAMERA_SECURITY };
+```
+
+Câmeras de segurança em:
+- Sala 1: Posição (-3.8, 2.8, -3.8)
+- Sala 2: Posição (8.0, 2.8, 5.8)
+
+---
+
+### **RECOMENDAÇÕES PARA API DE PORTAIS**
+
+Para que a instanciação de portais seja **intuitiva e fluida**, sugiro:
+
+1. **Criar um enum `PortalWall`** mapeando as paredes conhecidas:
+   ```cpp
+   enum PortalWall { 
+       SALA1_FRONT, SALA1_BACK, SALA1_LEFT, SALA1_RIGHT,
+       SALA2_LEFT, SALA2_RIGHT, SALA2_FRONT, SALA2_BACK,
+       // ...
+   };
+   ```
+
+2. **Função helper para calcular posição em parede:**
+   ```cpp
+   glm::vec3 GetPortalPositionOnWall(PortalWall wall, float uOffset, float vOffset);
+   ```
+
+3. **Struct Portal com matriz local-to-world:**
+   ```cpp
+   struct Portal {
+       glm::vec3 position;
+       glm::mat4 model_matrix;
+       PortalWall attached_wall;
+       glm::vec3 normal;  // normal da parede
+   };
+   ```
+
+4. **Instanciação simples:**
+   ```cpp
+   Portal p = CreatePortal(SALA1_FRONT, 0.5f, 0.5f);  // posição normalizada [0,1]
+   ```
+
+=================================================================
+ Total de eventos de mensagem processados: 83
+=================================================================

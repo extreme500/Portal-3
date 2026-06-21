@@ -1,0 +1,653 @@
+=================================================================
+ SESSÃO: agent-a46b2a66ccdb6afb8
+ Repositório: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3
+ Última modificação: 2026-06-20 17:41:21
+=================================================================
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:14.638Z]
+-----------------------------------------------------------------
+Estou trabalhando num projeto de Computação Gráfica em C++/OpenGL (UFRGS) em /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3. Vou implementar "portais" (mecânica do jogo Portal): ao atravessar um portal, o jogador/entidades são teleportados para o outro portal do par, e sua velocidade (e demais vetores físicos) deve ser transformada linearmente para manter continuidade. ATENÇÃO: portais não são necessariamente paralelos aos planos das paredes.
+
+Explore e me reporte com detalhes (caminhos de arquivo, números de linha, trechos de código):
+
+1. Como é representada a posição da câmera/jogador? Procure por camera position, g_CameraPos, free camera, vetores de posição/direção (view vector, up vector).
+2. Como funciona o movimento e a velocidade do jogador? Há vetor de velocidade, aceleração, gravidade, input WASD? Onde a posição é atualizada por frame (delta time)?
+3. Existe detecção de colisão? Com paredes/planos? Procure por AABB, bounding box, colisão esfera-plano, testes de interseção, "collision". Como paredes são representadas?
+4. Há entidades além do jogador (inimigos, objetos físicos, cubos)? Como elas se movem?
+5. Como o tempo (delta time) é gerenciado no loop principal?
+6. Há alguma noção de "planos" ou normais de superfícies já no código (struct Plane, normal vectors)?
+
+Quero entender onde e como interceptar/teleportar o jogador e transformar seus vetores de velocidade. Liste os arquivos e estruturas-chave. Seja minucioso (very thorough).
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:16.654Z]
+-----------------------------------------------------------------
+Vou explorar o projeto em detalhes. Começarei com uma varredura geral da estrutura do projeto e depois investigarei cada aspecto solicitado.
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:17.256Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: find /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3 -type f -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | head -50
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:17.318Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:19.209Z]
+-----------------------------------------------------------------
+Vejo que a nota indica "plan mode" - vou prosseguir com a exploração completa. Deixe-me focar nos arquivos-chave do projeto:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:20.545Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: find /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3 -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) ! -path "*/include/glm/*" ! -path "*/include/glad/*" ! -path "*/include/GLFW/*" ! -path "*/include/KHR/*" | sort
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:20.610Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:22.343Z]
+-----------------------------------------------------------------
+Agora vou focar nos arquivos-chave do projeto (ignorando bibliotecas externas):
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:22.950Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:23.247Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:25.370Z]
+-----------------------------------------------------------------
+Vou continuar lendo o arquivo principal e depois procurar por estruturas de colisão e física:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:26.672Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "Pos_Player\|g_PlayerVelocity\|velocity\|collision\|AABB\|Plane" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -60
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:26.738Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:29.356Z]
+-----------------------------------------------------------------
+Ótimo! Agora vou procurar pelas funções de movimento e colisão:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:30.439Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "TryMovePlayer\|IsPlayerOnGround\|BoxCollidesAt\|RadioCollidesAt\|IsButtonTriggered" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:30.489Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:32.260Z]
+-----------------------------------------------------------------
+Agora vou ler a seção com as funções de colisão e movimento:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:33.484Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2000
+  limit: 350
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:33.505Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:36.543Z]
+-----------------------------------------------------------------
+Perfeito! Agora vou procurar pela função `SetupCollisionAABBs()` para entender como as colisões são definidas:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:37.601Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "SetupCollisionAABBs\|CollisionLine" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -30
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:37.657Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:40.487Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 2349
+  limit: 300
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:40.501Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:42.739Z]
+-----------------------------------------------------------------
+Excelente! Agora vou procurar pelos arquivos header para ver se há estruturas auxiliares:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:43.597Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/include/utils.h
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:43.615Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:45.483Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/include/matrices.h
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:45.497Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:48.101Z]
+-----------------------------------------------------------------
+Perfeito! Agora vou procurar por toda a seção de movimento da caixa e do rádio para entender como entities dinâmicas são tratadas:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:49.450Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "g_BoxPosition\|g_BoxVelocityY\|g_RadioPosition\|g_RadioVelocityY\|g_IsHoldingBox\|g_IsHoldingRadio" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -80
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:49.487Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:51.596Z]
+-----------------------------------------------------------------
+Agora vou ler a seção completa de movimento de caixa e rádio:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:52.746Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1160
+  limit: 150
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:52.764Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:55.269Z]
+-----------------------------------------------------------------
+Excelente! Agora vou procurar por qualquer referência a portais:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:56.332Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -rn "portal\|Portal\|PORTAL" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -30
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:56.396Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:58.924Z]
+-----------------------------------------------------------------
+Agora vou procurar na lógica de renderização para ver como o mundo é disposto e se há algo relacionado a portais já implementado:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:39:59.483Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n "GRAVIDADE\|deltaTime\|glfwGetTime" /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -20
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:39:59.510Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:01.531Z]
+-----------------------------------------------------------------
+Perfeito! Agora vou criar um resumo detalhado. Deixe-me ler um trecho final para ver como as renderizações acontecem:
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:40:02.432Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1350
+  limit: 150
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-20T20:40:02.438Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-20T20:41:21.722Z]
+-----------------------------------------------------------------
+Perfeito! Agora tenho uma visão clara do projeto. Vou preparar um relatório abrangente:
+
+## RELATÓRIO DETALHADO - EXPLORAÇÃO DO PROJETO PORTAL-3
+
+Explorei completamente o projeto Portal-3 (projeto acadêmico de Computação Gráfica em C++/OpenGL da UFRGS). Aqui está meu relatório estruturado responden do suas 6 questões:
+
+---
+
+### 1. REPRESENTAÇÃO DA POSIÇÃO DA CÂMERA/JOGADOR
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Variáveis Principais:**
+- **Linha 348:** `glm::vec4 Pos_Player = glm::vec4(.0f,.0f,-2.0f,1.0f);`  
+  Posição global do jogador em coordenadas de mundo (X, Y, Z, W=1.0f para ponto homogêneo). Y=0 corresponde aos pés no chão (y_chão=-1.0f na renderização).
+
+- **Linhas 302-304:** Câmera em coordenadas esféricas (FPS):
+  - `float g_CameraTheta = 0.0f;` — ângulo horizontal (plano ZX) em relação ao eixo Z
+  - `float g_CameraPhi = 0.0f;`  — ângulo vertical em relação ao eixo Y
+  - `float g_CameraDistance = 3.5f;` — distância (não usada em FPS, mas presente)
+
+**Cálculo da Câmera FPS (Linhas 846-892):**
+```
+camera_position_c = Pos_Player + offset_forward * direção + FPS_EYE_HEIGHT (Y=0.3f)
+view_vector = (vx, vy, vz) onde:
+  vx = -cos(phi) * sin(theta)
+  vy = sin(phi)
+  vz = -cos(phi) * cos(theta)
+up_vector = (0, 1, 0)  [sempre apontando para cima]
+```
+- **Linhas 856-861:** Posição final com offset:
+```cpp
+camera_position_c = Pos_Player + glm::vec4(
+    camera_offset_forward * dir_x, 
+    FPS_EYE_HEIGHT,           // 0.3f
+    camera_offset_forward * dir_z, 
+    0.0f
+);
+```
+
+**Modo de Câmera de Segurança (Linhas 928-935):**
+- Posição fixa em cada sala (e.g., `glm::vec4(-3.8f, 2.8f, -3.8f, 1.0f)` para câmera 0)
+- Direção via curva de Bézier cúbica (veja linhas 975-1000)
+
+---
+
+### 2. MOVIMENTO E VELOCIDADE DO JOGADOR
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Física Horizontal (Linhas 746-787):**
+- Input WASD lê diretamente via `glfwGetKey()` a cada frame
+- Velocidade base: `float velocidade = 3;` (linha 349)
+- Com SHIFT: `velocidade_atual = velocidade * 1.6f;` (linhas 758-764)
+- Deslocamento por frame acumulado em `desired_dx` e `desired_dz`, depois aplicado via `TryMovePlayer()`
+
+```cpp
+if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS && g_GameStarted)
+    desired_dx += fwd_x * velocidade_atual * deltaTime;
+    desired_dz += fwd_z * velocidade_atual * deltaTime;
+```
+
+**Física Vertical (Linhas 383-386, 820-821):**
+- `const float GRAVIDADE = -9.8f;`
+- `const float FORCA_PULO = 4.5f;`
+- Velocidade vertical: `float g_PlayerVelocityY = 0.0f;`
+- Aceleração: `g_PlayerVelocityY += GRAVIDADE * deltaTime;`
+- Aplicação: `TryMovePlayerVertical(g_PlayerVelocityY * deltaTime);`
+
+**Pulo (Linhas 792-816):**
+- Detecta borda de subida (edge detection) da tecla espaço
+- Só pula se `IsPlayerOnGround()` retorna true (sem pulo duplo)
+- Aplica: `g_PlayerVelocityY = FORCA_PULO;`
+
+**Atualização de Posição (Linhas 787, 821):**
+```cpp
+TryMovePlayer(desired_dx, desired_dz);        // Movimento horizontal
+TryMovePlayerVertical(g_PlayerVelocityY * deltaTime); // Vertical
+```
+
+---
+
+### 3. DETECÇÃO E RESPOSTA A COLISÕES
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Estruturas de Colisão:**
+
+**Linhas 390-407:** Definição de colisores
+```cpp
+struct CollisionAABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+std::vector<CollisionAABB> g_CollisionAABBs;
+
+struct CollisionLine {
+    glm::vec2 p1;      // Ponto inicial (X, Z)
+    glm::vec2 p2;      // Ponto final (X, Z)
+    float y_min;       // Base
+    float y_max;       // Topo
+};
+std::vector<CollisionLine> g_CollisionLines;
+```
+
+**Representação da Câmera/Jogador para Colisão (Linhas 364-368, 375):**
+- Cilindro vertical (não esfera!)
+  - Raio: `float raio = 0.25f;`
+  - Altura: `float altura = 1.4f;`
+  - Pés em: `Pos_Player.y + PLAYER_FEET_Y_OFFSET` onde `PLAYER_FEET_Y_OFFSET = -1.0f`
+
+**Teste Principal - Cilindro vs AABB (Linhas 2003-2017):**
+```cpp
+bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box)
+{
+    // 1. Overlap em Y
+    if (y_max < box.min.y || y_min > box.max.y) return false;
+    
+    // 2. Distância do círculo ao retângulo (projeção XZ)
+    float closest_x = glm::clamp(pos_xz.x, box.min.x, box.max.x);
+    float closest_z = glm::clamp(pos_xz.y, box.min.z, box.max.z);
+    float dx = pos_xz.x - closest_x;
+    float dz = pos_xz.y - closest_z;
+    
+    return (dx*dx + dz*dz) < (raio * raio);
+}
+```
+
+**Teste com Paredes Diagonais (Linhas 2019-2047):**
+```cpp
+bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionLine& line)
+{
+    // Produto vetorial: projeta cilindro sobre a parede diagonal
+    glm::vec2 ab = line.p2 - line.p1;
+    glm::vec2 ap = pos_xz - line.p1;
+    float t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
+    glm::vec2 closest = line.p1 + t * ab;
+    
+    return glm::dot(pos_xz - closest, pos_xz - closest) < (raio * raio);
+}
+```
+
+**Função Principal de Colisão (Linhas 2058-2125):**
+- `PlayerCollidesAt(pos)` testa:
+  1. AABBs estáticas (paredes, chão, teto)
+  2. Linhas diagonais
+  3. Porta fechada (dinâmica, ativa quando botão não pressionado)
+  4. Caixa dinâmica (se não segurando)
+  5. Rádio dinâmico (se não segurando)
+
+**Movimento com Colisão (Linhas 2279-2318):**
+```cpp
+void TryMovePlayer(float dx, float dz)
+{
+    const float MAX_STEP_HEIGHT = 0.3f;
+    
+    // Eixo X
+    glm::vec3 candidate_x = Pos_Player + (dx, 0, 0);
+    if (!PlayerCollidesAt(candidate_x)) {
+        Pos_Player.x = candidate_x.x;
+    } else if (IsPlayerOnGround()) {
+        // Tenta subir um degrau
+        glm::vec3 step = Pos_Player + (dx, MAX_STEP_HEIGHT, 0);
+        if (!PlayerCollidesAt(step))
+            Pos_Player = step;
+    }
+    
+    // Análogo para Eixo Z (deslizamento em paredes)
+}
+```
+
+**Setup de Colisões (Linhas 2354-2515):**
+- Função `SetupCollisionAABBs()` preenchida uma vez no início
+- Define:
+  - Salas 1, 2, 3 com paredes/chão/teto
+  - Portas com buracos (passagens)
+  - Parede diagonal em Sala 2 (linhas 2477-2482)
+  - Hitboxes dinâmicas para porta fechada, pilar, bolo
+
+**Exemplo de Parede Diagonal (Linhas 2474-2482):**
+```cpp
+float offsetX = 1.414f;  // sqrt(2) * escala
+float offsetZ = 1.414f;
+g_CollisionLines.push_back({
+    glm::vec2(11.0f - offsetX, -2.7f - offsetZ),  // P1
+    glm::vec2(11.0f + offsetX, -2.7f + offsetZ),  // P2
+    -1.0f,  // y_min (chão)
+     3.0f   // y_max (teto)
+});
+```
+
+**Colisões de Objetos Dinâmicos:**
+- `BoxCollidesAt()` (linhas 2128-2179) — AABB simplificada (±0.25 unidades)
+- `RadioCollidesAt()` (linhas 2181-2229) — AABB menor (±0.15 XZ, ±0.03 Y)
+
+---
+
+### 4. ENTIDADES ALÉM DO JOGADOR
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Caixa (Portal Cube):**
+- **Posição:** `glm::vec3 g_BoxPosition = glm::vec3(11.0f, 0.0f, 5.0f);` (linha 352)
+- **Velocidade Y:** `float g_BoxVelocityY = 0.0f;` (linha 353)
+- **Rotação:** `float g_BoxAngleY = 0.0f;` (linha 354)
+- **Estado:** `bool g_IsHoldingBox = false;` (linha 355)
+- **Movimento (Linhas 1166-1216):**
+  - Se segurando: Raycast de 1.5f de distância a partir da câmera (linhas 1169-1186)
+  - Se solto: Aplica gravidade e testa colisão (linhas 1203-1215)
+  - Sistema anti-esmagamento: Solta automaticamente se distância < 1.0f
+- **Renderização (Linhas 1676-1677):**
+  ```cpp
+  model = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) 
+        * Matrix_Rotate_Y(g_BoxAngleY) 
+        * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+  ```
+
+**Rádio:**
+- **Posição:** `glm::vec3 g_RadioPosition = glm::vec3(1.5f, -1.0f, 0.0f);` (linha 85)
+- **Velocidade Y:** `float g_RadioVelocityY = 0.0f;` (linha 88)
+- **Rotação:** `float g_RadioAngleY = 0.0f;` (linha 89)
+- **Estado:** `bool g_IsHoldingRadio = false;` (linha 90)
+- **Movimento (Linhas 1221-1271):** Idêntico à caixa, com raycast
+- **Áudio 3D:** Posição vinculada ao som (linhas 696-699, 1352)
+- **Renderização (Linhas 1448-1468):** Desenhado em 9 partes (Shell, Radio, Grid, Screen, etc.)
+
+**Botão:**
+- **Hitbox Fixa:** Linhas 2467-2469, localizado em (9, -1, -1)
+- **Detecção:** `IsButtonTriggered()` (linhas 2231-2253)
+- **Ativa/Desativa:** Porta nos testes de colisão (linha 2079, 2154, etc.)
+- **Renderização:** Linha 1710, 1714
+
+**Porta Fechada:**
+- **Hitbox Dinâmica:** `CollisionAABB g_ClosedDoorAABB;` (linha 396)
+- **Setup (Linhas 2484-2494):**
+  ```cpp
+  glm::mat4 model_door_closed = Matrix_Translate(8.0f, -1.0f, 6.1f) 
+                              * Matrix_Rotate_Y(M_PI) 
+                              * Matrix_Scale(1.5f, 1.5f, 1.5f);
+  g_ClosedDoorAABB = ComputeWorldAABB(...);
+  ```
+
+**Pilar e Bolo (Sala 3):**
+- **Pilar (Linhas 2502-2505):** AABB fixa em (7.8-8.2 X, -1 a -0.2 Y, 7.95-8.35 Z)
+- **Bolo (Linhas 2507-2514):** AABB em cima do pilar (7.9-8.1 X, -0.2 a 0 Y, 8.05-8.25 Z)
+
+---
+
+### 5. GERENCIAMENTO DE TEMPO (DELTA TIME)
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Variáveis Globais (Linhas 409-411):**
+```cpp
+float ultimoFrame = 0.0f;
+float deltaTime = 0.0f;
+```
+
+**Inicialização (Linhas 723-726):**
+```cpp
+ultimoFrame = (float)glfwGetTime();  // Tempo em segundos desde startup GLFW
+```
+
+**Atualização a Cada Frame (Linhas 734-744):**
+```cpp
+float atualFrame = (float)glfwGetTime();
+deltaTime = atualFrame - ultimoFrame;
+ultimoFrame = atualFrame;
+
+// Limitador anti-tunneling (máximo 50ms por frame, i.e., mínimo 20 FPS)
+if (deltaTime > 0.05f) 
+    deltaTime = 0.05f;
+```
+
+**Uso na Física:**
+- Movimento horizontal: `desired_dx += fwd_x * velocidade_atual * deltaTime;` (linha 768)
+- Gravidade: `g_PlayerVelocityY += GRAVIDADE * deltaTime;` (linha 820)
+- Caixa/Rádio: `g_BoxVelocityY += GRAVIDADE * deltaTime;` (linha 1203)
+- Passos: `g_FootstepTimer += deltaTime;` (linha 898) — dispara som a cada intervalo
+
+**Câmera de Segurança:** Usa `glfwGetTime()` para Bézier (linha 963)
+
+---
+
+### 6. PLANOS E NORMAIS DE SUPERFÍCIES
+
+**Arquivo:** `/Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp`
+
+**Não há struct Plane explícita no código,** mas o projeto usa:
+
+**Linhas Diagonais (Quasi-Planos):**
+```cpp
+struct CollisionLine {
+    glm::vec2 p1, p2;      // Define um segmento (e implicitamente, normal perpendicular)
+    float y_min, y_max;    // Define altura da parede (paralela ao eixo Y)
+};
+```
+- Uma `CollisionLine` representa uma parede vertical diagonal no plano XZ
+- Normal implícita: perpendicular a `(p2 - p1)` no plano XZ
+- Exemplo (Sala 2, linhas 2477-2482):
+  - De (9.586, -4.114) a (12.414, -1.286)
+  - Rotação de -45 graus
+
+**AABBs como Planos:**
+- Chão: AABB com y_min e y_max bem próximos (ex.: y ∈ [-1.1f, -1.0f])
+- Teto: AABB com y ∈ [3.0f, 3.1f]
+- Paredes: AABB com um dos eixos X ou Z estreito (ex.: wall_t = 0.1f de espessura)
+
+**Exemplos de Setup (Linhas 2378-2427):**
+```cpp
+auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi) {
+    g_CollisionAABBs.push_back({glm::vec3(x_lo, y_lo, z_lo), glm::vec3(x_hi, y_hi, z_hi)});
+};
+
+// Chão da Sala 1
+add_wall_slab(sala1_min - wall_t, sala1_max + wall_t, 
+              sala1_min - wall_t, sala1_max + wall_t, 
+              y_min - wall_t, y_min);  // [-4.1, -1.1] e [-4.1, -1]
+
+// Teto
+add_wall_slab(sala1_min - wall_t, sala1_max + wall_t, 
+              sala1_min - wall_t, sala1_max + wall_t, 
+              y_max, y_max + wall_t);  // [3.0, 3.1]
+
+// Parede X=+4.0 com buraco para porta
+add_wall_with_doorway(4.0, 4.1, -4.1, 4.1);
+```
+
+**Cálculo de AABB de Mundo (Linhas 2324-2347):**
+- Função `ComputeWorldAABB()` transforma 8 vértices de uma AABB local por uma matriz 4x4
+- Recomputa min/max no espaço de mundo
+- Usada para objetos dinâmicos (caixa, rádio, porta) após rotação/escala
+
+**Normais Implícitas (via Vetores):**
+- Câmera FPS: `camera_view_vector = (vx, vy, vz)` (linhas 888-892)
+- Up vector: `camera_up_vector = (0, 1, 0)` (linha 844)
+- Derivadas em movimento: `dir_x = -sin(theta)`, `dir_z = -cos(theta)` (linhas 852-853)
+
+---
+
+### ESTRUTURAS CRÍTICAS PARA IMPLEMENTAÇÃO DE PORTAIS
+
+Para implementar portais, você precisará interceptar e transformar:
+
+1. **Posição do Jogador:** `Pos_Player` (linha 348)
+2. **Velocidade do Jogador:** `g_PlayerVelocityY` (linha 385)
+3. **Direção de Visualização:** `g_CameraTheta`, `g_CameraPhi` (linhas 302-303)
+4. **Posição de Entidades:** `g_BoxPosition`, `g_RadioPosition`
+5. **Velocidades de Entidades:** `g_BoxVelocityY`, `g_RadioVelocityY`
+
+**Matriz de Transformação de Portais:**
+- Cada portal par precisa de:
+  - Posição de entrada (centro)
+  - Normal (perpendicular ao plano do portal)
+  - Orientação (up vector)
+  - Posição de saída no outro portal
+  - Matriz de transformação linear (rotação + reflexão) para manter continuidade de velocidade
+
+**Pontos de Integração:**
+- Após `TryMovePlayer()` (linha 787), verificar se `Pos_Player` atravessou um portal
+- Antes de aplicar `g_PlayerVelocityY` (linhas 820-821), transformar para coordenadas do novo portal
+- Aplicar a mesma lógica para caixa/rádio após seus movimentos
+
+---
+
+**Resumo de Caminhos Principais:**
+- Physics loop: linhas 730-1352
+- Colisão jogador: linhas 2058-2125, 2279-2318
+- Colisão dinâmicos: linhas 2128-2229
+- Setup: linhas 2354-2515
+- Entidades: linhas 85-90, 348-356, 1166-1271
+
+=================================================================
+ Total de eventos de mensagem processados: 45
+=================================================================
