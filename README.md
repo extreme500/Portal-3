@@ -29,10 +29,16 @@ Este repositório contém o código base para o trabalho final. O enunciado comp
 - Tobias Cadoná Marion
     * Implementação da visão da câmera em primeira pessoa e em movimento de curva de Bézier;
     * Implementação da física do jogador, da função de pular e de colisões do jogador com o cenário nas salas 1 e 2;
-    * Implementação do sistema de portais e refatoração do fragment shader.
+    * Implementação do sistema de portais (teleporte, desenho, visualização recursiva incluindo materiais transparentes no caminho)
+    * Refatoração do fragment shader.
+    * Refatoração da Colisão para módulo externo
 
 # Uso de IA
-- A dupla fez uso das ferramentas Gemini (Pro) e Claude para o desenvolvimento da aplicação, ajudando com a maior parte das implementações, sendo todo o auxílio descrito com totalidade no arquivo PROMPTS.md. Sobre o Gemini Pro, ele foi extraordinariamente útil durante todo o projeto, sendo capaz de realizar cálculos automaticamente para montagem das colisões da cena e sempre conseguindo chegar nos resultados desejados, contanto que fosse guiado até lá com cuidado. O único ponto que o Gemini devidamente sofreu para conseguir auxiliar (ou não conseguiu) foi para com algumas correções dos portais/interação deles com a cena, que teve de ser feita manualmente.
+- A dupla fez uso das ferramentas Gemini (Pro) e Claude Code (Oppus 4.8 com diferentes níveis de raciocinio) para o desenvolvimento da aplicação, ajudando com a maior parte das implementações, sendo todo o auxílio descrito com totalidade no arquivo PROMPTS.md. 
+
+Sobre o Gemini Pro, ele foi extraordinariamente útil durante todo o projeto, sendo capaz de realizar cálculos automaticamente para montagem das colisões da cena e sempre conseguindo chegar nos resultados desejados, contanto que fosse guiado até lá com cuidado. O único ponto que o Gemini devidamente sofreu para conseguir auxiliar (ou não conseguiu) foi para com algumas correções dos portais/interação deles com a cena, que teve de ser feita manualmente.
+
+Sobre o uso do Claude Code foi essencial para o desenvolvimento do projeto, especialmente para corrções de problemas de baixo nível (como limitações do MacOS com texturas em relação a outros sistemas) e dúvidas com álgebra linear para a mecânica do projeto. Não utilizei nenhuma SKILL em específico para o projeto, mas sinto que se no começo do projeto tivesse dedicado um tempo para isso, teria tido outputs melhores em menos iterações e de maior qualidade. Todas as sessões de conversa com o Claude Code (foi utilizado via terminal) estão na pasta `claude-code-sessions` tanto com os arquivos originais, quanto com transcrições e o script utilizado para extraí-las. 
 
 # Imagens mostrando o funcionamento da aplicação
 

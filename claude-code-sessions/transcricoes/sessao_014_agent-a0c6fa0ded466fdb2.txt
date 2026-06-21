@@ -1,0 +1,423 @@
+=================================================================
+ SESSÃO: agent-a0c6fa0ded466fdb2
+ Repositório: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3
+ Última modificação: 2026-06-07 20:57:36
+=================================================================
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:55:47.466Z]
+-----------------------------------------------------------------
+Estou planejando implementar COLISÃO em um jogo 3D estilo Portal feito em C++ com OpenGL 3.3, projeto da disciplina de Computação Gráfica (UFRGS). Preciso de um plano de implementação detalhado.
+
+CONTEXTO DO PROJETO (de exploração prévia):
+- Arquivo principal: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (2274 linhas)
+- Posição do jogador: `glm::vec4 Pos_Player = glm::vec4(.0f,.0f,.0f,1.0f);` (linha ~236)
+- Velocidade: `float velocidade = 3;` unidades/segundo
+- Movimento por teclado ocorre nas linhas ~439-458, usa deltaTime, WASD relativo à câmera FPS
+- Câmera FPS mantém altura fixa de 0.3f acima de Pos_Player (constante FPS_EYE_HEIGHT na linha ~254)
+- Estrutura `SceneObject` (linhas ~160-169) já tem `bbox_min` e `bbox_max` (glm::vec3) computados no carregamento de cada objeto
+- `std::map<std::string, SceneObject> g_VirtualScene` guarda todos objetos da cena com suas bboxes
+- Mapeamento de salas:
+  - Sala 1: x,z em [-4,+4], y em [-1,+3] (chão y=-1, teto y=+3, paredes em x=±4 e z=±4)
+  - Sala 2: x,z em [+4.2,+12], y em [-1,+3] (deslocada +8.0 em x)
+  - Cubo em (+11.0, -0.75, 5.0); Botão em (9.0, -1.0, -1.0)
+- GLM disponível com `<glm/gtx/intersect.hpp>`
+- Não existe NENHUMA estrutura de colisão hoje — jogador atravessa paredes livremente
+- README do projeto cita necessidade de testes: jogador-parede, jogador-caixa, caixa-caixa, caixa-botão, caixa-parede
+
+DECISÕES JÁ TOMADAS PELO USUÁRIO (não as questione, baseie o plano nelas):
+1. Resposta à colisão: SLIDE ALONG WALLS (projetar vetor de movimento no plano da superfície de colisão, testando eixos X e Z separadamente para permitir deslizar suavemente ao longo de paredes)
+2. Escopo inicial: APENAS jogador-cenário (paredes, chão, teto, objetos estáticos como cubo/botão/porta). NÃO incluir caixa-caixa ou física de empurrar caixas nesta etapa.
+3. Representação do jogador: CILINDRO VERTICAL (raio fixo + altura), compatível com a câmera FPS de altura fixa (FPS_EYE_HEIGHT)
+
+TAREFA: Projete um plano de implementação completo e prático cobrindo:
+1. Estrutura de dados para representar o cilindro do jogador (raio, altura, posição) e onde declará-la
+2. Como detectar colisão entre o cilindro do jogador e os AABBs do cenário (algoritmo cilindro-vs-AABB, simplificações razoáveis, ex: tratar como círculo no plano XZ + faixa de altura Y)
+3. Como implementar o "slide along walls" — testar movimento por eixo (X e depois Z) e aplicar apenas a componente que não causa colisão
+4. Onde exatamente no código (linhas/funções) interceptar o cálculo de `Pos_Player` para aplicar a verificação de colisão antes de mover o jogador
+5. Como lidar com colisão vertical (chão/teto) dado que o jogador parece não pular (sem gravidade aparente) — confirmar isso lendo o trecho de movimento
+6. Quais objetos da cena devem participar da checagem (todas as paredes/chão/teto das duas salas + objetos estáticos como cubo, botão, porta) e como obter suas AABBs já calculadas em `g_VirtualScene`
+7. Considerações de performance (são poucos objetos, então força bruta é aceitável — não complicar com estruturas espaciais)
+
+Leia o código relevante de /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (especialmente trechos próximos às linhas 160-260, 424-572, 1408-1435) para confirmar os detalhes antes de desenhar o plano. Retorne um plano de implementação passo-a-passo, com nomes de funções sugeridas, assinatura, e onde inserir o código (arquivo + posição aproximada).
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:55:49.704Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 150
+  limit: 120
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:55:49.728Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:55:50.209Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 420
+  limit: 155
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:55:50.236Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:55:50.659Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1400
+  limit: 45
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:55:50.679Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:55:53.231Z]
+-----------------------------------------------------------------
+Let me check how object names are stored to identify which scene objects represent walls/floor/ceiling/static obstacles, and confirm there's no jump/gravity logic elsewhere.
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:55:55.641Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n 'AddVirtualObject\|g_VirtualScene\[\|"Sala\|"sala\|"parede\|"chao\|"piso\|"teto\|"cubo\|"botao\|"porta\|SPACE\|JUMP\|gravity\|gravidade\|jump\|y +=\|Pos_Player.y' /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -100
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:55:55.694Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:55:58.413Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: grep -n 'DrawVirtualObject(\|model = Matrix_Translate' /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp | head -80
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:55:58.462Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:56:04.656Z]
+-----------------------------------------------------------------
+This confirms the key issue: walls/floor/ceiling are all drawn using a single shared mesh `"the_plane"` with different model transforms (translate/rotate/scale), so the per-object `bbox_min`/`bbox_max` in `g_VirtualScene["the_plane"]` is in **local/object space**, not world space — the same AABB is reused for every wall instance. This is critical: collision cannot just read `g_VirtualScene[name].bbox_min/max` directly for walls; we need world-space AABBs computed from each instance's model matrix (or, simpler, hand-authored world-space AABBs derived from the room geometry the user already described).
+
+Let me check the `DrawVirtualObject` and bbox usage in the shader to confirm bbox is local-space, and check for `SPACE` key usage (to confirm no jump).
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:56:05.778Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+  offset: 1888
+  limit: 12
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:56:05.800Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:56:08.923Z]
+-----------------------------------------------------------------
+Confirmed: SPACE resets Euler angles, no jumping/gravity exists. Pos_Player.y is never modified by player input — it stays at 0. Now I have everything needed to write the plan.
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:56:09.258Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: mkdir -p /Users/tobiascadonamarion/.claude/plans 2>/dev/null; true
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-06-07T23:56:10.623Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-06-07T23:57:36.180Z]
+-----------------------------------------------------------------
+## Plano de Implementação: Colisão Jogador–Cenário (Cilindro + Slide)
+
+### Achado crítico antes de tudo
+
+As paredes/chão/teto/portas são todas instâncias de **um único mesh compartilhado** (`"the_plane"`, `"door_wall"`), desenhadas com `model = Matrix_Translate(...) * Matrix_Rotate_*(...) * Matrix_Scale(...)`. Logo `g_VirtualScene["the_plane"].bbox_min/max` é a AABB **em espaço local do objeto**, igual para todas as ~24 instâncias. **Não dá para usar essa AABB diretamente em espaço de mundo.** Duas opções:
+
+- (A) Recalcular a AABB de mundo aplicando a `model` matrix de cada instância sobre os 8 cantos da AABB local, ou
+- (B) Já que as salas têm geometria simples e **o usuário já descreveu as dimensões exatas das salas** (caixas/planos retos), **definir manualmente uma lista de AABBs de mundo** para paredes/chão/teto — muito mais simples, robusto e sem necessidade de tocar no pipeline de renderização.
+
+Recomendo **(B)** para paredes/chão/teto/portas (geometria axis-aligned conhecida), e usar a AABB local de `g_VirtualScene[...]` transformada pela `model` apenas para objetos com geometria própria não-trivial como `"Cube"` (caixa) e `"portal_button_reduced_2"` (botão), aplicando (A) só a esses poucos.
+
+Também confirmado: **não há gravidade nem pulo** (`SPACE` apenas reseta ângulos de Euler de depuração; `Pos_Player.y` nunca é alterado por input). Logo colisão vertical pode ser tratada como **clamp simples de altura** (chão/teto fixos por sala), sem física vertical de verdade.
+
+---
+
+### 1. Estrutura de dados do cilindro do jogador
+
+Inserir logo após a declaração de `Pos_Player` (linha ~236-237 de `src/main.cpp`):
+
+```cpp
+// Representação física do jogador para fins de colisão: cilindro vertical
+// O eixo do cilindro é vertical (Y); base em Pos_Player.y, topo em Pos_Player.y + altura
+struct PlayerCollider {
+    float raio   = 0.25f;   // raio do cilindro no plano XZ
+    float altura = 0.6f;    // altura total do cilindro (>= FPS_EYE_HEIGHT, ex: 0.6f)
+};
+PlayerCollider g_PlayerCollider;
+```
+
+Mantém `Pos_Player` como está (compatível com câmera FPS já existente: `FPS_EYE_HEIGHT` continua referente à base do cilindro = pés do jogador).
+
+Também declarar uma estrutura simples para AABBs de colisão de mundo, próxima ao `SceneObject`:
+
+```cpp
+// AABB em coordenadas de mundo, usada para testes de colisão
+struct CollisionAABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+std::vector<CollisionAABB> g_CollisionAABBs; // preenchido uma vez, no setup da cena
+```
+
+---
+
+### 2. Algoritmo cilindro vs AABB (simplificação círculo-XZ + faixa Y)
+
+Como o cilindro é vertical e os obstáculos são AABBs (também alinhados aos eixos), a checagem 3D se decompõe em:
+
+1. **Overlap vertical (eixo Y)**: faixa `[Pos_Player.y, Pos_Player.y + altura]` intersecta `[aabb.min.y, aabb.max.y]`?
+2. **Overlap no plano XZ**: distância do **centro do círculo** (`Pos_Player.x, Pos_Player.z`) ao **retângulo** `[aabb.min.xz, aabb.max.xz]` é menor que `raio`? (clamp do centro ao retângulo + distância euclidiana — é exatamente o teste círculo-vs-AABB2D padrão.)
+
+Função sugerida (inserir nas funções utilitárias, perto de `BezierCubic` ou junto das outras funções auxiliares de matemática, por volta da linha ~1100-1140, ou criar uma seção nova "Funções de colisão" antes de `main`):
+
+```cpp
+// Testa colisão entre o cilindro do jogador (centrado em pos_xz, com raio e
+// faixa vertical [y_min, y_max]) e uma AABB de mundo. Retorna true se há sobreposição.
+bool CylinderIntersectsAABB(const glm::vec2& pos_xz, float raio,
+                            float y_min, float y_max,
+                            const CollisionAABB& box)
+{
+    // 1) Overlap vertical
+    if (y_max < box.min.y || y_min > box.max.y)
+        return false;
+
+    // 2) Distância do centro (XZ) ao retângulo da AABB projetada em XZ
+    float closest_x = glm::clamp(pos_xz.x, box.min.x, box.max.x);
+    float closest_z = glm::clamp(pos_xz.y, box.min.z, box.max.z); // pos_xz.y == coordenada Z
+    float dx = pos_xz.x - closest_x;
+    float dz = pos_xz.y - closest_z;
+
+    return (dx*dx + dz*dz) < (raio * raio);
+}
+
+// Testa se o cilindro do jogador, na posição candidata 'pos', colide com
+// QUALQUER AABB do cenário registrada em g_CollisionAABBs.
+bool PlayerCollidesAt(const glm::vec3& pos)
+{
+    glm::vec2 pos_xz(pos.x, pos.z);
+    float y_min = pos.y;
+    float y_max = pos.y + g_PlayerCollider.altura;
+
+    for (const CollisionAABB& box : g_CollisionAABBs)
+    {
+        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, box))
+            return true;
+    }
+    return false;
+}
+```
+
+---
+
+### 3. Slide along walls — testar por eixo
+
+A ideia: calcular o deslocamento desejado `(dx, dz)` (resultado de WASD nesse frame), então testar e aplicar **X e Z separadamente**:
+
+```cpp
+// Tenta mover o jogador por (dx, 0, dz). Aplica cada componente
+// independentemente, permitindo "deslizar" ao longo de paredes quando apenas
+// um eixo causa colisão.
+void TryMovePlayer(float dx, float dz)
+{
+    // Testa eixo X isoladamente
+    glm::vec3 candidate_x = glm::vec3(Pos_Player.x + dx, Pos_Player.y, Pos_Player.z);
+    if (!PlayerCollidesAt(candidate_x))
+        Pos_Player.x = candidate_x.x;
+
+    // Testa eixo Z isoladamente (a partir da posição já potencialmente atualizada em X)
+    glm::vec3 candidate_z = glm::vec3(Pos_Player.x, Pos_Player.y, Pos_Player.z + dz);
+    if (!PlayerCollidesAt(candidate_z))
+        Pos_Player.z = candidate_z.z;
+}
+```
+
+Esse padrão (mover X, testar, mover Z, testar) é exatamente o "slide": se o movimento bate de frente numa parede perpendicular a Z mas o jogador também está se movendo em X, a componente X continua sendo aplicada livremente — produzindo o deslizar suave ao longo da parede.
+
+---
+
+### 4. Onde interceptar `Pos_Player` no loop principal
+
+Local: `src/main.cpp`, dentro do `while (!glfwWindowShouldClose(window))`, bloco de movimento por teclado, **linhas 439-458**. Hoje o código modifica `Pos_Player.x`/`Pos_Player.z` diretamente e de forma cumulativa (W e S e A e D podem todos contribuir no mesmo frame). A estratégia mais limpa e que preserva o comportamento atual (movimento diagonal somando vetores) é:
+
+1. Acumular o **delta desejado total** em variáveis locais `desired_dx`, `desired_dz` (em vez de aplicar direto a `Pos_Player`);
+2. No final do bloco, chamar `TryMovePlayer(desired_dx, desired_dz)`.
+
+Reescrita sugerida do bloco (substitui linhas 439-458):
+
+```cpp
+float desired_dx = 0.0f;
+float desired_dz = 0.0f;
+
+if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+{
+    desired_dx += fwd_x * velocidade * deltaTime;
+    desired_dz += fwd_z * velocidade * deltaTime;
+}
+if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+{
+    desired_dx -= fwd_x * velocidade * deltaTime;
+    desired_dz -= fwd_z * velocidade * deltaTime;
+}
+if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+{
+    desired_dx -= right_x * velocidade * deltaTime;
+    desired_dz -= right_z * velocidade * deltaTime;
+}
+if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+{
+    desired_dx += right_x * velocidade * deltaTime;
+    desired_dz += right_z * velocidade * deltaTime;
+}
+
+TryMovePlayer(desired_dx, desired_dz);
+```
+
+Isso preserva 100% do comportamento de input existente (incluindo `isMoving` na linha 501-504, que continua testando as teclas diretamente) e centraliza toda a aplicação de movimento físico em um único ponto.
+
+---
+
+### 5. Colisão vertical (chão/teto) sem gravidade/pulo
+
+Confirmado: `Pos_Player.y` nunca muda em resposta a input (constante em `0.0f`); `SPACE` (linha 1896) apenas reseta ângulos de depuração `g_AngleX/Y/Z`. Logo **não existe eixo Y dinâmico** — o jogador sempre anda "no chão" da sala em que está.
+
+Como as duas salas têm o mesmo nível de chão (`y = -1`) e teto (`y = +3`), e `Pos_Player.y == 0` está sempre dentro dessa faixa (cilindro de altura 0.6 vai de y=0 a y=0.6, bem dentro de [-1, +3]), **não é necessário implementar resposta dinâmica de colisão vertical nesta etapa**: basta que o teste de overlap vertical do passo 2 funcione corretamente para impedir que o jogador atravesse paredes (que vão de y=-1 a y=+3) — o que ele já faz, pois a faixa do cilindro sempre estará dentro da faixa da parede.
+
+Recomendação prática: **não adicionar nenhuma lógica de chão/teto separada agora**. Documentar com um comentário no código que `Pos_Player.y` é tratado como constante (sem gravidade/pulo) e que, se isso mudar no futuro (ex.: adicionar pulo), será necessário um terceiro teste de eixo (`TryMovePlayer` ganhar um componente `dy` e checagem de colisão vertical com clamp em chão/teto).
+
+---
+
+### 6. Quais objetos participam e como obter as AABBs
+
+**Lista de obstáculos a registrar em `g_CollisionAABBs`** (preenchido uma única vez, ex. logo após `BuildTrianglesAndAddToVirtualScene(...)` ser chamado no setup do `main`, ou em uma nova função `SetupCollisionAABBs()` chamada antes do loop principal):
+
+A. **Paredes/chão/teto/portas — AABBs de mundo definidas manualmente** (opção B), usando exatamente as faixas que o usuário já documentou:
+
+```cpp
+void SetupCollisionAABBs()
+{
+    g_CollisionAABBs.clear();
+
+    const float wall_t = 0.1f; // espessura "fake" da parede para o teste de colisão
+
+    // ---- Sala 1: x,z em [-4,+4], y em [-1,+3] ----
+    g_CollisionAABBs.push_back({ glm::vec3(-4.0f-wall_t, -1.0f, -4.0f-wall_t), glm::vec3(4.0f+wall_t, -1.0f, 4.0f+wall_t) }); // chão (fina, y~-1)
+    g_CollisionAABBs.push_back({ glm::vec3(-4.0f-wall_t,  3.0f, -4.0f-wall_t), glm::vec3(4.0f+wall_t,  3.0f, 4.0f+wall_t) }); // teto
+    g_CollisionAABBs.push_back({ glm::vec3(-4.0f-wall_t, -1.0f, -4.0f-wall_t), glm::vec3(-4.0f, 3.0f, 4.0f+wall_t) });        // parede x=-4
+    g_CollisionAABBs.push_back({ glm::vec3( 4.0f,        -1.0f, -4.0f-wall_t), glm::vec3( 4.0f+wall_t, 3.0f, 4.0f+wall_t) }); // parede x=+4 (com porta — ver nota)
+    g_CollisionAABBs.push_back({ glm::vec3(-4.0f-wall_t, -1.0f, -4.0f-wall_t), glm::vec3(4.0f+wall_t, 3.0f, -4.0f) });        // parede z=-4
+    g_CollisionAABBs.push_back({ glm::vec3(-4.0f-wall_t, -1.0f,  4.0f),        glm::vec3(4.0f+wall_t, 3.0f,  4.0f+wall_t) }); // parede z=+4
+
+    // ---- Sala 2: x,z em [+4.2,+12], y em [-1,+3] (mesmo padrão, deslocado +8 em x) ----
+    // ... (replicar o mesmo padrão de 6 AABBs com os limites [4.2, 12])
+
+    // ---- Objetos estáticos: usar AABB local transformada pela matriz "model" usada ao desenhá-los ----
+    // Ex.: Cubo em (+11.0, -0.75, 5.0) com escala 1/8 -> ver item B abaixo
+    // Ex.: Botão em (9.0, -1.0, -1.0) com escala 1.65 -> ver item B abaixo
+}
+```
+
+Nota: a parede em `x=+4` na Sala 1 contém a porta (`door_wall` / `portal_door_combined_model_2`). Para o escopo inicial, é aceitável tratar essa parede como sólida (porta sempre fechada para fins de colisão) ou simplesmente **omitir essa AABB** caso o jogo já preveja atravessar para a Sala 2 sempre que necessário — decisão de design do usuário; recomendo deixar sólida por enquanto e revisar quando portais forem implementados.
+
+B. **Objetos estáticos com geometria não trivial — transformar AABB local pela `model` matrix** (opção A, função utilitária):
+
+```cpp
+// Calcula a AABB de mundo de um objeto, dada sua AABB local (de g_VirtualScene)
+// e a matriz de modelagem usada para desenhá-lo. Transforma os 8 cantos e
+// recomputa min/max — válido mesmo com rotações/escalas.
+CollisionAABB ComputeWorldAABB(const glm::vec3& local_min, const glm::vec3& local_max,
+                               const glm::mat4& model)
+{
+    glm::vec3 corners[8] = {
+        {local_min.x, local_min.y, local_min.z}, {local_max.x, local_min.y, local_min.z},
+        {local_min.x, local_max.y, local_min.z}, {local_max.x, local_max.y, local_min.z},
+        {local_min.x, local_min.y, local_max.z}, {local_max.x, local_min.y, local_max.z},
+        {local_min.x, local_max.y, local_max.z}, {local_max.x, local_max.y, local_max.z},
+    };
+
+    glm::vec3 wmin( std::numeric_limits<float>::max());
+    glm::vec3 wmax(-std::numeric_limits<float>::max());
+    for (const glm::vec3& c : corners)
+    {
+        glm::vec3 wc = glm::vec3(model * glm::vec4(c, 1.0f));
+        wmin = glm::min(wmin, wc);
+        wmax = glm::max(wmax, wc);
+    }
+    return { wmin, wmax };
+}
+```
+
+Para preencher a lista com o cubo e o botão, replicar (em `SetupCollisionAABBs`, ou logo no início do loop principal antes de chamar `TryMovePlayer`/checagem) **as mesmas matrizes `model`** usadas nas linhas 967 (`Matrix_Translate(+11.0f,-0.75f,5.0f)*Matrix_Scale(1/8.0,1/8.0,1/8.0)`) e 982 (`Matrix_Translate(9.0f, -1.0f,-1.0f)*Matrix_Scale(1.65,1.65,1.65)`):
+
+```cpp
+glm::mat4 model_cube = Matrix_Translate(+11.0f, -0.75f, 5.0f) * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["Cube"].bbox_min, g_VirtualScene["Cube"].bbox_max, model_cube));
+
+glm::mat4 model_button = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(1.65f, 1.65f, 1.65f);
+g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["portal_button_reduced_2"].bbox_min, g_VirtualScene["portal_button_reduced_2"].bbox_max, model_button));
+```
+
+Como essas posições são estáticas (não mudam frame a frame), basta computar **uma vez** no setup, não a cada frame.
+
+---
+
+### 7. Performance
+
+Total de objetos de colisão: ~12 paredes/chão/teto (6 por sala) + 2 estáticos (cubo, botão) = **~14 AABBs**. Um teste cilindro-AABB é O(1) com poucas operações aritméticas; 14 testes por eixo, 2 eixos, 60+ FPS — totalmente trivial (< 1 µs de CPU). **Força bruta (laço linear sobre `g_CollisionAABBs`) é mais que suficiente**; não há necessidade de grid, BVH, octree, ou qualquer estrutura espacial. Evitar essa complexidade adicional é a escolha correta para este escopo.
+
+---
+
+### Resumo de onde tocar o arquivo
+
+| Mudança | Linha aproximada em `src/main.cpp` |
+|---|---|
+| `struct PlayerCollider`, `g_PlayerCollider`, `struct CollisionAABB`, `g_CollisionAABBs` | logo após linha 237 (junto a `Pos_Player`/`velocidade`) |
+| `CylinderIntersectsAABB`, `PlayerCollidesAt`, `TryMovePlayer`, `ComputeWorldAABB` | nova seção de funções utilitárias antes de `main` (perto de `BezierCubic`, ~linha 1100-1150) + protótipos na seção de declarações antecipadas (~linha 122) |
+| `SetupCollisionAABBs()` — chamada uma vez | logo após `BuildTrianglesAndAddToVirtualScene(...)` no setup do `main`, antes do `while` (perto da linha ~420) |
+| Substituição do bloco de movimento WASD por acumulação + `TryMovePlayer` | linhas 439-458 |
+
+### Critical Files for Implementation
+- /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (linhas 236-237: declarar `PlayerCollider`/`CollisionAABB`/globais)
+- /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (linhas 439-458: substituir bloco de movimento WASD)
+- /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (linhas ~1100-1150: adicionar funções `CylinderIntersectsAABB`, `PlayerCollidesAt`, `TryMovePlayer`, `ComputeWorldAABB`, `SetupCollisionAABBs`)
+- /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (linhas ~420: chamar `SetupCollisionAABBs()` após `BuildTrianglesAndAddToVirtualScene`)
+- /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp (linhas 122-156: adicionar protótipos das novas funções na seção de declarações)
+
+=================================================================
+ Total de eventos de mensagem processados: 19
+=================================================================

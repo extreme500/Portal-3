@@ -1,0 +1,196 @@
+=================================================================
+ SESSÃO: 4cc98a7e-66d7-4230-9b99-aba4c418ca0e
+ Repositório: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3
+ Última modificação: 2026-05-25 18:06:19
+=================================================================
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-05-25T11:12:43.704Z]
+-----------------------------------------------------------------
+Claude, vou ter que apresentar um trabalho sobre o estado atual desse repositório. Consegue me passar um mega resumo de como funciona o código?
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:17.986Z]
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:18.532Z]
+-----------------------------------------------------------------
+Vou explorar o repositório para te dar um resumo completo.
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:20.113Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Bash]
+  command: find /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3 -type f | head -60 && echo "---" && ls /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-05-25T11:13:20.519Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:23.754Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/main.cpp
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:24.075Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/SPEC.md
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-05-25T11:13:24.087Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-05-25T11:13:25.797Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:32.837Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/shader_fragment.glsl
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-05-25T11:13:32.853Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:33.159Z]
+-----------------------------------------------------------------
+[🔧 Ferramenta: Read]
+  file_path: /Users/tobiascadonamarion/Documents/UFRGS/CG/Portal-3/src/shader_vertex.glsl
+
+
+-----------------------------------------------------------------
+👤 USUÁRIO  [2026-05-25T11:13:33.172Z]
+-----------------------------------------------------------------
+
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:13:43.025Z]
+-----------------------------------------------------------------
+
+-----------------------------------------------------------------
+🤖 CLAUDE   [2026-05-25T11:14:16.983Z]
+-----------------------------------------------------------------
+Agora tenho o quadro completo. Aqui está o resumo:
+
+---
+
+## Resumo do Repositório — Portal 3 (FANMADE)
+
+**Disciplina:** INF01047 - Computação Gráfica e Visualização I (UFRGS)
+**Dupla:** Tobias Cadoná Marion (00590278) e Gabriel Pieruccini Knopp (00594975)
+
+---
+
+### O que é o projeto
+
+Uma prova de conceito inspirada no jogo Portal, implementada em **C++ com OpenGL 3.3 moderno**. O objetivo final é um puzzle 3D interativo com portais, câmeras, física básica e iluminação realista.
+
+---
+
+### Estrutura de arquivos
+
+| Arquivo/Pasta | Papel |
+|---|---|
+| `src/main.cpp` | Núcleo da aplicação (~1600 linhas) |
+| `src/shader_vertex.glsl` | Shader de vértice (pipeline da GPU) |
+| `src/shader_fragment.glsl` | Shader de fragmento (iluminação e texturas) |
+| `data/` | Modelos `.obj` (esfera, coelho, plano, Chell) e texturas `.jpg` |
+| `include/` | GLM, GLAD, GLFW, stb_image, tinyobjloader |
+
+---
+
+### Como o código funciona
+
+#### 1. Inicialização (`main()`)
+- Cria janela OpenGL com **GLFW** e carrega funções OpenGL modernas via **GLAD**
+- Registra callbacks para teclado, mouse e redimensionamento
+- Carrega os shaders do disco (recarregáveis em tempo de execução com `R`)
+- Carrega texturas via **stb_image** (tijolos vermelhos e terreno rochoso)
+- Carrega modelos 3D via **tinyobjloader**: esfera, coelho, plano e o personagem Chell
+- Habilita depth test e backface culling
+
+#### 2. Representação de objetos (`ObjModel` + `SceneObject`)
+- `ObjModel` encapsula os dados crus do `.obj` (vértices, normais, texcoords)
+- `BuildTrianglesAndAddToVirtualScene()` converte cada shape em buffers de GPU (VAO/VBO) e registra em `g_VirtualScene` (um `map<string, SceneObject>`)
+- `ComputeNormals()` calcula normais suavizadas por Gouraud se o `.obj` não as tiver
+
+#### 3. Loop de renderização
+A cada frame:
+1. Limpa o framebuffer (cor azulada + depth buffer)
+2. Calcula posição da câmera em **coordenadas esféricas** (controlada pelo mouse — drag esquerdo = orbitar, scroll = zoom)
+3. Monta as matrizes **View** (look-at) e **Projection** (perspectiva ou ortográfica, `P`/`O`)
+4. Envia as matrizes para a GPU via uniforms
+5. Desenha os objetos chamando `DrawVirtualObject()` com a matriz de model e um `object_id` inteiro
+
+Atualmente só o **personagem Chell** e o **plano do chão** são desenhados (esfera e coelho estão comentados).
+
+#### 4. Shaders (GPU)
+
+**Vertex Shader:**
+- Recebe posição (`location=0`), normal (`location=1`), texcoord (`location=2`)
+- Transforma: `gl_Position = projection * view * model * vertex`
+- Propaga posição world, posição model, normal e texcoords para o fragment shader
+
+**Fragment Shader:**
+- Usa `object_id` para decidir como mapear textura:
+  - `SPHERE` → projeção **esférica** (phi/theta)
+  - `BUNNY` → projeção **planar XY** (normalizada pela AABB)
+  - `PLANE` → coordenadas UV do `.obj`
+  - `PLAYER` → incompleto (ainda a preencher)
+- Iluminação: **Lambert simples** com 5 luzes direcionais configuradas hardcoded
+- Tem variáveis prontas para PBS (Physically Based Shading) mas ainda não usadas na equação final
+- Aplica correção de **gamma (sRGB)** no final
+
+#### 5. Controles implementados
+| Tecla/Mouse | Ação |
+|---|---|
+| Drag esquerdo | Orbita câmera (ângulos esféricos θ, φ) |
+| Scroll | Zoom (distância da câmera) |
+| Drag direito | Rotaciona antebraço (variáveis legadas do lab) |
+| Drag meio | Translada torso |
+| `X/Y/Z` (+Shift) | Rotação dos ângulos de Euler |
+| `Espaço` | Reseta ângulos/posições |
+| `P` / `O` | Perspectiva / Ortográfica |
+| `H` | Toggle do texto informativo na tela |
+| `R` | Recarrega shaders em tempo real |
+| `ESC` | Fecha a janela |
+
+---
+
+### Estado atual vs. Especificação
+
+O repositório está na **fase de setup/base do laboratório**. O que foi feito:
+- Pipeline OpenGL completo funcionando
+- Carregamento de modelos e texturas
+- Câmera look-at orbitando com mouse
+- Mapeamento de texturas para esfera, coelho e plano
+- Modelo do personagem Chell carregado e renderizado (sem textura ainda)
+
+O que **ainda precisa ser implementado** (conforme o SPEC.md):
+- Câmera em primeira pessoa (FPS) para o jogador
+- Câmera de segurança look-at animada com curva Bézier cúbica
+- Sistema de portais com renderização recursiva (câmera dentro de câmera)
+- Física: gravidade, movimentação com Δt
+- Colisões: AABB personagem-parede, caixa-botão, projétil de portal-parede
+- Iluminação PBS completa
+- Texturas para todos os objetos (incluindo Chell)
+- Lógica de puzzle (caixas, botões, duas fases)
+
+=================================================================
+ Total de eventos de mensagem processados: 15
+=================================================================
