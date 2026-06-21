@@ -1105,18 +1105,14 @@ void DrawScene()
 }
 
 // --- Portais ---------------------------------------------------------------
-PortalPair          g_Portals;        // par de portais (azul + laranja) — Sala 1
-PortalPair          g_Portals2;       // segundo par (teto + parede) — Sala 2
-PortalPair          g_Portals3;       // terceiro par (fundo + esquerda) — Sala 2
-PortalCrossingState g_PlayerCrossing; // estado de travessia do jogador (par 1)
-PortalCrossingState g_BoxCrossing;    // estado de travessia da caixa    (par 1)
-PortalCrossingState g_RadioCrossing;  // estado de travessia do rádio   (par 1)
-PortalCrossingState g_PlayerCrossing2;// estado de travessia do jogador (par 2)
-PortalCrossingState g_BoxCrossing2;   // estado de travessia da caixa    (par 2)
-PortalCrossingState g_RadioCrossing2; // estado de travessia do rádio   (par 2)
-PortalCrossingState g_PlayerCrossing3;// estado de travessia do jogador (par 3)
-PortalCrossingState g_BoxCrossing3;   // estado de travessia da caixa    (par 3)
-PortalCrossingState g_RadioCrossing3; // estado de travessia do rádio   (par 3)
+// Um par de portais e os estados de travessia das entidades que o atravessam
+// (jogador, caixa, rádio). Mantém juntos os dados que sempre andam juntos.
+struct PortalSet {
+    PortalPair          pair;
+    PortalCrossingState player, box, radio;
+};
+static const int NUM_PORTAL_PAIRS = 3;
+PortalSet g_PortalSets[NUM_PORTAL_PAIRS]; // [0] Sala 1 · [1] teto/parede · [2] paredes adjacentes
 
 // Raio de colisão de cada entidade (usado no offset frontal p/ detecção de travessia).
 // Deve refletir o raio do cilindro (jogador) ou metade da largura da AABB (caixa/rádio).
@@ -1329,60 +1325,37 @@ int main(int argc, char* argv[])
     // botão), uma única vez, já que a geometria estática não muda em runtime.
     SetupCollisionAABBs();
 
-    // --- Instanciação dos portais (API intuitiva: ponto + normal da parede) ---
-    // Um par vinculado em paredes opostas e paralelas da Sala 1 (Z=-4 e Z=+4),
-    // ambos centrados no eixo X da sala. O azul está na parede da frente,
-    // o laranja na parede dos fundos, um de frente para o outro.
-    g_Portals = PortalPair::create(
-        Portal::onWall(glm::vec3(0.0f, 1.0f, -3.98f), glm::vec3(0.0f, 0.0f,  1.0f)), // azul  — parede frontal (Z=-4), normal +Z
-        Portal::onWall(glm::vec3(0.0f, 1.0f,  3.98f), glm::vec3(0.0f, 0.0f, -1.0f)), // laranja — parede traseira (Z=+4), normal -Z
-        1.2f, 2.0f);
+    // --- Instanciação dos portais (API: ponto + normal da parede via onWall) ---
+    // onWall deriva a base ortonormal só da normal, então qualquer parede/teto
+    // funciona igual. Cada par é vinculado (azul + laranja).
+    const float kPortalW = 1.2f, kPortalH = 2.0f;
 
-    g_PlayerCrossing.bodyRadius = PLAYER_BODY_RADIUS;
-    g_BoxCrossing.bodyRadius    = BOX_BODY_RADIUS;
-    g_RadioCrossing.bodyRadius  = RADIO_BODY_RADIUS;
+    // [0] Sala 1: paredes opostas e paralelas (Z=∓4), uma de frente para a outra.
+    g_PortalSets[0].pair = PortalPair::create(
+        Portal::onWall(glm::vec3(0.0f, 1.0f, -3.98f), glm::vec3(0.0f, 0.0f,  1.0f)), // azul    — parede frontal
+        Portal::onWall(glm::vec3(0.0f, 1.0f,  3.98f), glm::vec3(0.0f, 0.0f, -1.0f)), // laranja — parede traseira
+        kPortalW, kPortalH);
 
-    // --- Segundo par de portais (Sala 2) ---
-    // Um no teto (Y=+3) e outro na parede direita (X=+12), ambos na Sala 2,
-    // centrados em X=8/Z=1 (teto) e X=12/Z=1 (parede).
+    // [1] Sala 2: teto (Y=+2.7) e parede direita (X=+12). upHint do teto evita
+    // base degenerada (normal ~vertical).
+    g_PortalSets[1].pair = PortalPair::create(
+        Portal::onWall(glm::vec3(8.0f,   2.70f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)), // teto
+        Portal::onWall(glm::vec3(11.98f, 1.0f,  1.0f), glm::vec3(-1.0f, 0.0f, 0.0f)),                              // parede direita
+        kPortalW, kPortalH);
+
+    // [2] Sala 2: parede do fundo (Z=-4) e parede esquerda (X=+4.2), adjacentes.
+    g_PortalSets[2].pair = PortalPair::create(
+        Portal::onWall(glm::vec3(6.5f,  1.0f, -3.98f), glm::vec3(0.0f, 0.0f, 1.0f)), // parede do fundo
+        Portal::onWall(glm::vec3(4.23f, 1.0f, -1.5f),  glm::vec3(1.0f, 0.0f, 0.0f)), // parede esquerda
+        kPortalW, kPortalH);
+
+    // Raio de colisão por entidade (offset frontal na detecção de travessia).
+    for (int i = 0; i < NUM_PORTAL_PAIRS; ++i)
     {
-        Portal ceiling;
-        ceiling.center = glm::vec3(8.0f, 2.70f, 1.0f);
-        ceiling.normal = glm::vec3(0.0f, -1.0f, 0.0f);
-        ceiling.up     = glm::vec3(0.0f, 0.0f, 1.0f);
-
-        Portal rightWall;
-        rightWall.center = glm::vec3(11.98f, 1.0f, 1.0f);
-        rightWall.normal = glm::vec3(-1.0f, 0.0f, 0.0f);
-        rightWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
-
-        g_Portals2 = PortalPair::create(ceiling, rightWall, 1.2f, 2.0f);
+        g_PortalSets[i].player.bodyRadius = PLAYER_BODY_RADIUS;
+        g_PortalSets[i].box.bodyRadius    = BOX_BODY_RADIUS;
+        g_PortalSets[i].radio.bodyRadius  = RADIO_BODY_RADIUS;
     }
-
-    g_PlayerCrossing2.bodyRadius = PLAYER_BODY_RADIUS;
-    g_BoxCrossing2.bodyRadius    = BOX_BODY_RADIUS;
-    g_RadioCrossing2.bodyRadius  = RADIO_BODY_RADIUS;
-
-    // --- Terceiro par de portais (Sala 2, paredes adjacentes) ---
-    // Um na parede do fundo (Z=-4) e outro na parede esquerda (X=+4.2),
-    // nas proximidades do canto esquerdo-fundo da Sala 2.
-    {
-        Portal backWall;
-        backWall.center = glm::vec3(6.5f, 1.0f, -3.98f);
-        backWall.normal = glm::vec3(0.0f, 0.0f, 1.0f);
-        backWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
-
-        Portal leftWall;
-        leftWall.center = glm::vec3(4.23f, 1.0f, -1.5f);
-        leftWall.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-        leftWall.up     = glm::vec3(0.0f, 1.0f, 0.0f);
-
-        g_Portals3 = PortalPair::create(backWall, leftWall, 1.2f, 2.0f);
-    }
-
-    g_PlayerCrossing3.bodyRadius = PLAYER_BODY_RADIUS;
-    g_BoxCrossing3.bodyRadius    = BOX_BODY_RADIUS;
-    g_RadioCrossing3.bodyRadius  = RADIO_BODY_RADIUS;
 
     PortalGLContext pctx;
     pctx.modelUniform      = g_model_uniform;
@@ -1596,7 +1569,7 @@ int main(int argc, char* argv[])
         {
             glm::vec3 ppos = glm::vec3(Pos_Player);
             glm::vec3 pvel(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
-            if (g_Portals.teleportPlayer(g_PlayerCrossing, ppos, pvel,
+            if (g_PortalSets[0].pair.teleportPlayer(g_PortalSets[0].player, ppos, pvel,
                                          g_CameraTheta, g_CameraPhi))
             {
                 Pos_Player = glm::vec4(ppos, 1.0f);
@@ -1607,7 +1580,7 @@ int main(int argc, char* argv[])
             {
                 glm::vec3 ppos2 = glm::vec3(Pos_Player);
                 glm::vec3 pvel2(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
-                if (g_Portals2.teleportPlayer(g_PlayerCrossing2, ppos2, pvel2,
+                if (g_PortalSets[1].pair.teleportPlayer(g_PortalSets[1].player, ppos2, pvel2,
                                              g_CameraTheta, g_CameraPhi))
                 {
                     Pos_Player = glm::vec4(ppos2, 1.0f);
@@ -1619,7 +1592,7 @@ int main(int argc, char* argv[])
             {
                 glm::vec3 ppos3 = glm::vec3(Pos_Player);
                 glm::vec3 pvel3(desired_dx / deltaTime, g_PlayerVelocityY, desired_dz / deltaTime);
-                if (g_Portals3.teleportPlayer(g_PlayerCrossing3, ppos3, pvel3,
+                if (g_PortalSets[2].pair.teleportPlayer(g_PortalSets[2].player, ppos3, pvel3,
                                              g_CameraTheta, g_CameraPhi))
                 {
                     Pos_Player = glm::vec4(ppos3, 1.0f);
@@ -1947,8 +1920,8 @@ int main(int argc, char* argv[])
 
             // Enquanto segurada, mantemos o estado de travessia "zerado" para não
             // disparar um teleporte espúrio ao soltar perto de um portal.
-            g_BoxCrossing.initialized = false;
-            g_BoxCrossing2.initialized = false;
+            g_PortalSets[0].box.initialized = false;
+            g_PortalSets[1].box.initialized = false;
 
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o cubo
             g_BoxAngleY = g_CameraTheta;
@@ -1996,7 +1969,7 @@ int main(int argc, char* argv[])
             {
                 glm::vec3 bvel(g_BoxVel.x, g_BoxVelocityY, g_BoxVel.z);
                 float byaw = g_BoxAngleY;
-                if (g_Portals.teleportIfCrossed(g_BoxCrossing, g_BoxPosition, &bvel, &byaw))
+                if (g_PortalSets[0].pair.teleportIfCrossed(g_PortalSets[0].box, g_BoxPosition, &bvel, &byaw))
                 {
                     g_BoxVelocityY = bvel.y;
                     g_BoxVel = glm::vec3(bvel.x, 0.0f, bvel.z);
@@ -2006,7 +1979,7 @@ int main(int argc, char* argv[])
                 {
                     glm::vec3 bvel2 = bvel;
                     float byaw2 = g_BoxAngleY;
-                    if (g_Portals2.teleportIfCrossed(g_BoxCrossing2, g_BoxPosition, &bvel2, &byaw2))
+                    if (g_PortalSets[1].pair.teleportIfCrossed(g_PortalSets[1].box, g_BoxPosition, &bvel2, &byaw2))
                     {
                         g_BoxVelocityY = bvel2.y;
                         g_BoxVel = glm::vec3(bvel2.x, 0.0f, bvel2.z);
@@ -2017,7 +1990,7 @@ int main(int argc, char* argv[])
                 {
                     glm::vec3 bvel3 = bvel;
                     float byaw3 = g_BoxAngleY;
-                    if (g_Portals3.teleportIfCrossed(g_BoxCrossing3, g_BoxPosition, &bvel3, &byaw3))
+                    if (g_PortalSets[2].pair.teleportIfCrossed(g_PortalSets[2].box, g_BoxPosition, &bvel3, &byaw3))
                     {
                         g_BoxVelocityY = bvel3.y;
                         g_BoxVel = glm::vec3(bvel3.x, 0.0f, bvel3.z);
@@ -2054,9 +2027,9 @@ int main(int argc, char* argv[])
 
             // Enquanto segurado, mantém o estado de travessia "zerado" para não
             // disparar um teleporte espúrio ao soltar perto de um portal.
-            g_RadioCrossing.initialized = false;
-            g_RadioCrossing2.initialized = false;
-            g_RadioCrossing3.initialized = false;
+            g_PortalSets[0].radio.initialized = false;
+            g_PortalSets[1].radio.initialized = false;
+            g_PortalSets[2].radio.initialized = false;
 
             // Magia do Face-Tracking: Copia a rotação da câmera (Eixo Y) para o rádio
             g_RadioAngleY = g_CameraTheta;
@@ -2103,7 +2076,7 @@ int main(int argc, char* argv[])
             {
                 glm::vec3 rvel(g_RadioVel.x, g_RadioVelocityY, g_RadioVel.z);
                 float ryaw = g_RadioAngleY;
-                if (g_Portals.teleportIfCrossed(g_RadioCrossing, g_RadioPosition, &rvel, &ryaw))
+                if (g_PortalSets[0].pair.teleportIfCrossed(g_PortalSets[0].radio, g_RadioPosition, &rvel, &ryaw))
                 {
                     g_RadioVelocityY = rvel.y;
                     g_RadioVel = glm::vec3(rvel.x, 0.0f, rvel.z);
@@ -2113,7 +2086,7 @@ int main(int argc, char* argv[])
                 {
                     glm::vec3 rvel2 = rvel;
                     float ryaw2 = g_RadioAngleY;
-                    if (g_Portals2.teleportIfCrossed(g_RadioCrossing2, g_RadioPosition, &rvel2, &ryaw2))
+                    if (g_PortalSets[1].pair.teleportIfCrossed(g_PortalSets[1].radio, g_RadioPosition, &rvel2, &ryaw2))
                     {
                         g_RadioVelocityY = rvel2.y;
                         g_RadioVel = glm::vec3(rvel2.x, 0.0f, rvel2.z);
@@ -2124,7 +2097,7 @@ int main(int argc, char* argv[])
                 {
                     glm::vec3 rvel3 = rvel;
                     float ryaw3 = g_RadioAngleY;
-                    if (g_Portals3.teleportIfCrossed(g_RadioCrossing3, g_RadioPosition, &rvel3, &ryaw3))
+                    if (g_PortalSets[2].pair.teleportIfCrossed(g_PortalSets[2].radio, g_RadioPosition, &rvel3, &ryaw3))
                     {
                         g_RadioVelocityY = rvel3.y;
                         g_RadioVel = glm::vec3(rvel3.x, 0.0f, rvel3.z);
@@ -2236,14 +2209,11 @@ int main(int argc, char* argv[])
         if (g_GameStarted && g_CameraMode == CAMERA_FPS)
         {
             const int kPortalRecursionDepth = 3;
-            g_Portals.renderViews(view, projection, kPortalRecursionDepth);
-            g_Portals.renderSurfaces();
-
-            g_Portals2.renderViews(view, projection, kPortalRecursionDepth);
-            g_Portals2.renderSurfaces();
-
-            g_Portals3.renderViews(view, projection, kPortalRecursionDepth);
-            g_Portals3.renderSurfaces();
+            for (int i = 0; i < NUM_PORTAL_PAIRS; ++i)
+            {
+                g_PortalSets[i].pair.renderViews(view, projection, kPortalRecursionDepth);
+                g_PortalSets[i].pair.renderSurfaces();
+            }
         }
 
         // Imprimimos na tela informação sobre o número de quadros renderizados
@@ -2836,15 +2806,12 @@ void ResetScene()
     mov_sec_camera = 1;
 
     // 5. Reset dos estados de travessia dos portais
-    g_PlayerCrossing.initialized = false;
-    g_BoxCrossing.initialized = false;
-    g_RadioCrossing.initialized = false;
-    g_PlayerCrossing2.initialized = false;
-    g_BoxCrossing2.initialized = false;
-    g_RadioCrossing2.initialized = false;
-    g_PlayerCrossing3.initialized = false;
-    g_BoxCrossing3.initialized = false;
-    g_RadioCrossing3.initialized = false;
+    for (int i = 0; i < NUM_PORTAL_PAIRS; ++i)
+    {
+        g_PortalSets[i].player.initialized = false;
+        g_PortalSets[i].box.initialized    = false;
+        g_PortalSets[i].radio.initialized  = false;
+    }
     g_PlayerPortalVel = glm::vec3(0.0f);
 
     // 6. Reset das variáveis de debug/poses (Opcional, mas recomendado)
