@@ -470,6 +470,13 @@ void DrawTransparentObjects()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_CULL_FACE);
 
+    // Vidro translúcido: TESTA a profundidade, mas NÃO a escreve. Sem isto, o
+    // vidro grava no depth buffer e oclui o que for desenhado depois e atrás
+    // dele — em particular, as molduras/vistas dos portais (drawFramePair) na
+    // renderização see-through, fazendo o portal do par "sumir" quando está
+    // atrás de uma parede de vidro. Restaurado para GL_TRUE ao final.
+    glDepthMask(GL_FALSE);
+
     glm::mat4 model = Matrix_Identity();
 
     // Desenhamos o plano das paredes de vidro (Frente 1/2)
@@ -508,6 +515,7 @@ void DrawTransparentObjects()
     SetObjectId(GLASS);
     DrawVirtualObject("the_plane");
 
+    glDepthMask(GL_TRUE); // restaura a escrita de profundidade para o resto do frame
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
 }
