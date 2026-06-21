@@ -1,4 +1,5 @@
 #include "portal.h"
+#include "matrices.h"
 
 #include <glad/glad.h>
 
@@ -22,8 +23,8 @@ void Portal_SetGLContext(const PortalGLContext& ctx)
 static bool withinRect(const Portal& portal, const glm::vec3& p)
 {
     glm::vec3 d = p - portal.center;
-    float x = glm::dot(d, portal.right());
-    float y = glm::dot(d, portal.up);
+    float x = dotproduct(d, portal.right());
+    float y = dotproduct(d, portal.up);
     return std::fabs(x) <= portal.width * 0.5f
         && std::fabs(y) <= portal.height * 0.5f;
 }
@@ -33,15 +34,15 @@ static bool withinRect(const Portal& portal, const glm::vec3& p)
 // ---------------------------------------------------------------------------
 glm::vec3 Portal::right() const
 {
-    return glm::normalize(glm::cross(up, normal));
+    return normalized(crossproduct(up, normal));
 }
 
 glm::mat4 Portal::frame() const
 {
     // Base ortonormal destra: r x u = n. Reortonormalizamos por segurança.
-    glm::vec3 n = glm::normalize(normal);
-    glm::vec3 r = glm::normalize(glm::cross(up, n));
-    glm::vec3 u = glm::cross(n, r);
+    glm::vec3 n = normalized(normal);
+    glm::vec3 r = normalized(crossproduct(up, n));
+    glm::vec3 u = crossproduct(n, r);
 
     // glm::mat4 recebe COLUNAS: [ right | up | normal | center ].
     return glm::mat4(
@@ -55,13 +56,13 @@ glm::mat4 Portal::frame() const
 glm::mat4 Portal::frameInverse() const
 {
     // frame() é uma transformação rígida (rotação ortonormal + translação);
-    // glm::inverse é exato e barato para 4x4.
-    return glm::inverse(frame());
+    // Matrix_Inverse é exato e barato para 4x4.
+    return Matrix_Inverse(frame());
 }
 
 float Portal::signedDistance(const glm::vec3& p) const
 {
-    return glm::dot(p - center, normal);
+    return dotproduct(p - center, normal);
 }
 
 Portal Portal::onWall(glm::vec3 center, glm::vec3 normal, glm::vec3 upHint)
@@ -69,17 +70,17 @@ Portal Portal::onWall(glm::vec3 center, glm::vec3 normal, glm::vec3 upHint)
     Portal p;
     p.center = center;
 
-    glm::vec3 n = glm::normalize(normal);
+    glm::vec3 n = normalized(normal);
 
     // Se a dica de "up" for ~paralela à normal (parede ~ chão/teto), trocamos de
     // eixo para evitar base degenerada.
-    glm::vec3 h = glm::normalize(upHint);
-    if (std::fabs(glm::dot(h, n)) > 0.99f)
+    glm::vec3 h = normalized(upHint);
+    if (std::fabs(dotproduct(h, n)) > 0.99f)
         h = (std::fabs(n.y) > 0.99f) ? glm::vec3(0.0f, 0.0f, 1.0f)
                                      : glm::vec3(0.0f, 1.0f, 0.0f);
 
-    glm::vec3 r = glm::normalize(glm::cross(h, n)); // right
-    glm::vec3 u = glm::normalize(glm::cross(n, r)); // up reortonormalizado
+    glm::vec3 r = normalized(crossproduct(h, n)); // right
+    glm::vec3 u = normalized(crossproduct(n, r)); // up reortonormalizado
 
     p.normal = n;
     p.up     = u;
@@ -113,7 +114,7 @@ glm::mat4 PortalPair::transitionMatrix(const Portal& from, const Portal& to) con
     // up local (eixo Y do frame): assim sai-se de FRENTE para fora do destino.
     // Usado para VELOCIDADE/ORIENTAÇÃO (w=0): a rotação inverte a direção de
     // entrada (apontando para o portal) para saída (apontando para fora dele).
-    glm::mat4 flip = glm::rotate(glm::mat4(1.0f), PORTAL_PI, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 flip = Matrix_Rotate_Y(PORTAL_PI);
     return to.frame() * flip * from.frameInverse();
 }
 
@@ -149,7 +150,7 @@ glm::vec3 PortalPair::transformVector(const Portal& from, const glm::vec3& v) co
 static glm::vec3 frontPosition(const Portal& p, const glm::vec3& position,
                                 float bodyRadius)
 {
-    return position - glm::normalize(p.normal) * bodyRadius;
+    return position - normalized(p.normal) * bodyRadius;
 }
 
 void PortalPair::resetSides(PortalCrossingState& state, const glm::vec3& position) const
@@ -226,9 +227,9 @@ bool PortalPair::teleportPlayer(PortalCrossingState& state,
     glm::vec3 viewDir(-std::cos(phi) * std::sin(theta),
                        std::sin(phi),
                       -std::cos(phi) * std::cos(theta));
-    glm::vec3 d = glm::normalize(glm::vec3(dirMatrix * glm::vec4(viewDir, 0.0f)));
+    glm::vec3 d = normalized(glm::vec3(dirMatrix * glm::vec4(viewDir, 0.0f)));
 
-    phi = std::asin(glm::clamp(d.y, -1.0f, 1.0f));
+    phi = std::asin(clampf(d.y, -1.0f, 1.0f));
     float cphi = std::cos(phi);
     if (std::fabs(cphi) > 1e-4f)
         theta = std::atan2(-d.x / cphi, -d.z / cphi);
@@ -246,8 +247,8 @@ bool PortalPair::teleportPlayer(PortalCrossingState& state,
 static glm::mat4 portalQuadModel(const Portal& p, float pushOut)
 {
     glm::vec3 r = p.right();
-    glm::vec3 n = glm::normalize(p.normal);
-    glm::vec3 u = glm::normalize(p.up);
+    glm::vec3 n = normalized(p.normal);
+    glm::vec3 u = normalized(p.up);
     glm::vec3 c = p.center + n * pushOut;
 
     glm::mat4 basis(
@@ -256,8 +257,7 @@ static glm::mat4 portalQuadModel(const Portal& p, float pushOut)
         glm::vec4(u, 0.0f),   // local Z -> up
         glm::vec4(c, 1.0f)
     );
-    return basis * glm::scale(glm::mat4(1.0f),
-                              glm::vec3(p.width * 0.5f, 1.0f, p.height * 0.5f));
+    return basis * Matrix_Scale(p.width * 0.5f, 1.0f, p.height * 0.5f);
 }
 
 void PortalPair::drawPortalQuad(const Portal& portal) const
@@ -284,13 +284,13 @@ void PortalPair::drawPortalQuad(const Portal& portal) const
 // Repetir M a cada nível dá a cadeia M^k do hall of mirrors.
 static glm::mat4 virtualViewThrough(const glm::mat4& M, const glm::mat4& view)
 {
-    glm::vec3 eye = glm::vec3(glm::inverse(view) * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    glm::vec3 eye = glm::vec3(Matrix_Inverse(view) * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
     glm::vec3 fwd = -glm::vec3(view[0][2], view[1][2], view[2][2]);
     glm::vec3 up  =  glm::vec3(view[0][1], view[1][1], view[2][1]);
     glm::vec3 vEye = glm::vec3(M * glm::vec4(eye, 1.0f));
     glm::vec3 vFwd = glm::vec3(M * glm::vec4(fwd, 0.0f));
     glm::vec3 vUp  = glm::vec3(M * glm::vec4(up,  0.0f));
-    return glm::lookAt(vEye, vEye + vFwd, vUp);
+    return Matrix_Camera_View(glm::vec4(vEye, 1.0f), glm::vec4(vFwd, 0.0f), glm::vec4(vUp, 0.0f));
 }
 
 void PortalPair::stampStencil(const Portal& portal, const glm::mat4& view,
@@ -369,8 +369,8 @@ void PortalPair::renderOneView(const Portal& portal, const glm::mat4& view,
     // Plano de recorte (mundo): mantém só o lado da sala do portal de destino,
     // descartando o que está atrás dele. É o MESMO plano em todos os níveis,
     // pois sempre renderizamos o mundo real a partir de uma câmera deslocada.
-    glm::vec3 n = glm::normalize(dest.normal);
-    glm::vec4 clipPlane(n, -glm::dot(dest.center, n) - 0.001f);
+    glm::vec3 n = normalized(dest.normal);
+    glm::vec4 clipPlane(n, -dotproduct(dest.center, n) - 0.001f);
 
     glUniformMatrix4fv(g_PortalGL.viewUniform, 1, GL_FALSE, glm::value_ptr(virtualView));
     glUniform4fv(g_PortalGL.clipPlaneUniform, 1, glm::value_ptr(clipPlane));
@@ -401,6 +401,28 @@ void PortalPair::renderOneView(const Portal& portal, const glm::mat4& view,
     // continua íntegro fora dela.
     if (depth > 1)
         renderOneView(portal, virtualView, projection, depth - 1, level + 1);
+
+    // ---- 5b) Objetos transparentes (vidro) DESTE nível, por ÚLTIMO ----
+    // Depois do opaco, das molduras E da recursão, para que o "glass effect"
+    // tinja tudo que estiver atrás do vidro nesta vista — inclusive o portal de
+    // destino reaparecido: tanto a sua moldura (passo 4b) quanto a vista
+    // see-through gerada pela recursão (passo 5). Se desenhado antes da recursão,
+    // esta o sobrescreveria. A recursão alterou câmera/recorte/stencil, então os
+    // restauramos para os DESTE nível. O vidro testa profundidade mas não a
+    // escreve (ver DrawTransparentObjects): só tinge o que está atrás dele e fica
+    // confinado à janela (stencil == level).
+    if (g_PortalGL.drawTransparent)
+    {
+        glUniformMatrix4fv(g_PortalGL.viewUniform, 1, GL_FALSE, glm::value_ptr(virtualView));
+        glUniform4fv(g_PortalGL.clipPlaneUniform, 1, glm::value_ptr(clipPlane));
+        glEnable(GL_CLIP_DISTANCE0);
+        glStencilFunc(GL_EQUAL, level, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glDepthFunc(GL_LESS);
+        g_PortalGL.drawTransparent();
+        glDisable(GL_CLIP_DISTANCE0);
+        glUniform4fv(g_PortalGL.clipPlaneUniform, 1, glm::value_ptr(noClip));
+    }
 
     // ---- 6) Desfaz a marca deste nível (DECR: level -> level-1) ----
     // GL_ALWAYS: mexe SÓ no stencil, na mesma região do passo 1, sem tocar a cor

@@ -8,6 +8,7 @@
 set(SOURCES
   src/main.cpp
   src/portal.cpp
+  src/collisions.cpp
   src/correcao.cpp
   src/textrendering.cpp
   src/tiny_obj_loader.cpp

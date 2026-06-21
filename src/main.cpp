@@ -49,6 +49,7 @@
 #include "utils.h"
 #include "matrices.h"
 #include "portal.h"
+#include "collisions.h"
 #include "bezier.h"
 
 
@@ -270,17 +271,10 @@ void LoadShader(const char* filename, GLuint shader_id); // Função utilizada p
 GLuint CreateGpuProgram(GLuint vertex_shader_id, GLuint fragment_shader_id); // Cria um programa de GPU
 void PrintObjModelInfo(ObjModel*); // Função para debugging
 
-// Declaração de funções utilizadas para detecção e resposta a colisões
-struct CollisionAABB; // forward declaration (struct definida acima de main())
-bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box);
-bool PlayerCollidesAt(const glm::vec3& pos);
-bool BoxCollidesAt(glm::vec3 pos);
-bool RadioCollidesAt(glm::vec3 pos);
-bool IsButtonTriggered();
-bool IsPlayerOnGround();
-void TryMovePlayer(float dx, float dz);
-void TryMovePlayerVertical(float dy);
-CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model);
+// Detecção e resposta a colisões: os tipos e as queries estão no módulo
+// collisions (collisions.h). As funções abaixo permanecem no main por
+// dependerem do estado global do jogo (Pos_Player, g_CollisionWorld, etc.).
+SceneState CurrentSceneState(); // snapshot do estado dinâmico do frame (def. abaixo)
 void SetupCollisionAABBs();
 void ResetScene();
 
@@ -416,26 +410,15 @@ bool g_EWasPressed = false;
 // Controle botão (objeto) pressionado
 bool g_IsButtonPressed = false;
 
-// Representação física do jogador para fins de colisão: um cilindro vertical
-// cujos pés ficam em "Pos_Player.y + PLAYER_FEET_Y_OFFSET" (ver abaixo) e cujo
-// topo fica altura unidades acima disso.
-struct PlayerCollider {
-    float raio   = 0.25f;
-    float altura = 1.4f;
-};
-PlayerCollider g_PlayerCollider;
+// As dimensões físicas do jogador (cilindro de colisão) ficam em
+// g_CollisionWorld.player; ver struct PlayerCollider em collisions.h.
 
 // O modelo do jogador é desenhado com um deslocamento vertical de -1.0f em
 // relação a Pos_Player (ver DrawVirtualObject de player_model_*: a matriz de
 // modelagem usa "Pos_Player.y - 1.0f"), de forma que Pos_Player.y == 0.0f
 // corresponde aos pés apoiados no chão das salas (y = -1.0f). O cilindro de
-// colisão usa essa mesma referência para os seus pés.
-const float PLAYER_FEET_Y_OFFSET = -1.0f;
-
-// Margem de tolerância ("skin") usada para encolher o intervalo vertical
-// testado em PlayerCollidesAt — evita que o jogador fique "grudado" ao tocar
-// exatamente o chão/teto, o que travaria também o movimento horizontal.
-const float COLLISION_SKIN = 0.02f;
+// colisão usa essa mesma referência para os seus pés. As constantes
+// PLAYER_FEET_Y_OFFSET e COLLISION_SKIN estão definidas em collisions.h.
 
 // Física vertical: gravidade e pulo
 const float GRAVIDADE  = -9.8f; // aceleração da gravidade, em unidades/s²
@@ -444,26 +427,11 @@ float g_PlayerVelocityY = 0.0f; // velocidade vertical atual do jogador
 glm::vec3 g_PlayerPortalVel = glm::vec3(0.0f); // momento horizontal (xz) ao sair de um portal
 bool  g_SpaceWasPressed = false; // estado da tecla espaço no frame anterior (detecção de borda de subida, evita pulo contínuo ao segurar a tecla)
 
-// Caixa delimitadora axis-aligned em coordenadas de mundo, usada nos testes
-// de colisão do cenário (paredes, chão, teto, cubo, botão, porta)
-struct CollisionAABB {
-    glm::vec3 min;
-    glm::vec3 max;
-};
-std::vector<CollisionAABB> g_CollisionAABBs;
-// Hitbox dinâmica para a segunda porta (ativa apenas quando fechada)
-CollisionAABB g_ClosedDoorAABB;
-
-// Representa uma parede diagonal no plano XZ
-struct CollisionLine {
-    glm::vec2 p1;    // Ponto inicial da parede (X, Z)
-    glm::vec2 p2;    // Ponto final da parede (X, Z)
-    float y_min;     // Base da parede (chão)
-    float y_max;     // Topo da parede (teto)
-};
-
-// Vetor global para armazenar as paredes diagonais do cenário
-std::vector<CollisionLine> g_CollisionLines;
+// Estado estático de colisão do cenário: AABBs (paredes, chão, teto, botão,
+// pilar, bolo), paredes diagonais, hitbox da porta 2, dimensões do jogador e
+// bboxes locais da caixa/rádio. Preenchido uma única vez em SetupCollisionAABBs().
+// Ver struct CollisionWorld em collisions.h.
+CollisionWorld g_CollisionWorld;
 
 // Variáveis para controle de tempo
 float ultimoFrame = 0.0f;
@@ -501,6 +469,13 @@ void DrawTransparentObjects()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_CULL_FACE);
+
+    // Vidro translúcido: TESTA a profundidade, mas NÃO a escreve. Sem isto, o
+    // vidro grava no depth buffer e oclui o que for desenhado depois e atrás
+    // dele — em particular, as molduras/vistas dos portais (drawFramePair) na
+    // renderização see-through, fazendo o portal do par "sumir" quando está
+    // atrás de uma parede de vidro. Restaurado para GL_TRUE ao final.
+    glDepthMask(GL_FALSE);
 
     glm::mat4 model = Matrix_Identity();
 
@@ -540,6 +515,7 @@ void DrawTransparentObjects()
     SetObjectId(GLASS);
     DrawVirtualObject("the_plane");
 
+    glDepthMask(GL_TRUE); // restaura a escrita de profundidade para o resto do frame
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
 }
@@ -704,16 +680,16 @@ void DrawScene()
 
                 // Mapeamos a distância para um fator de 0.0 (perto) a 1.0 (longe)
                 // Se estiver a 1.0 de distância ou menos, fator = 0.0. Se estiver a 1.5 ou mais, fator = 1.0.
-                float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+                float t = clampf((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
 
                 // Interpolação linear (Lerp): o limite varia suavemente entre -1.38 e -2.8
-                float limite_parede = glm::mix(-1.3f, -2.8f, t);
+                float limite_parede = lerp(-1.3f, -2.8f, t);
 
                 // Aplicação do limite calculado
                 if (target_player.x < limite_parede) target_player.x = limite_parede;
                 if (target_player.z < limite_parede) target_player.z = limite_parede;
 
-                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+                sec_cam_front = normalized(target_player - sec_cam_pos);
             }
             else if (mov_sec_camera == 2)
             {
@@ -747,17 +723,17 @@ void DrawScene()
                 
                 // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
                 glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
-                sec_cam_front = glm::normalize(bezier_dir);
+                sec_cam_front = normalized(bezier_dir);
             }
         }
         else // CAMERA_SECURITY
         {
             // Se estamos enxergando PELA câmera de segurança, o modelo físico 
             // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
+            sec_cam_front = normalized(glm::vec3(g_RenderCameraViewVector));
         }
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-        glm::mat4 rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        glm::mat4 rotation_matrix = Matrix_Inverse(Matrix_Camera_View(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), glm::vec4(sec_cam_front, 0.0f), glm::vec4(up, 0.0f)));
         model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         SetObjectId(SEC_CAM);
@@ -898,7 +874,7 @@ void DrawScene()
         DrawVirtualObject("Cube");
 
         // Verifica se tem algum objeto em cima do botão
-        g_IsButtonPressed = IsButtonTriggered();
+        g_IsButtonPressed = IsButtonTriggered(CurrentSceneState(), glm::vec3(Pos_Player));
 
         // Desenhamos o modelo da porta (Fechada ou Aberta 2R-3R)
         model = Matrix_Translate(8.0f, -1.0f,+6.1f) * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.5f,1.5f,1.5f);
@@ -948,12 +924,12 @@ void DrawScene()
                 // Mapeamos essa distância lateral para o nosso fator 't' (0.0 a 1.0)
                 // Se ele estiver até 1.0 unidade pro lado, t = 0 (Perto)
                 // Se ele estiver a 3.0 unidades ou mais pro lado, t = 1 (Longe nos cantos)
-                float t = glm::clamp((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
+                float t = clampf((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
 
                 // Interpolação linear (Lerp): 
                 // Se t=0 (jogador na frente), o limite de Z é 5.6 (quase debaixo da câmera).
                 // Se t=1 (jogador nos cantos), forçamos o limite de Z para 4.5 (empurra a visão pro meio da sala).
-                float limite_parede_z = glm::mix(1.5f, 7.5f, t);
+                float limite_parede_z = lerp(1.5f, 7.5f, t);
 
                 // Aplica o limite! Como a câmera olha para valores negativos de Z (fundo da sala),
                 // nós não deixamos o alvo da câmera ultrapassar o limite seguro.
@@ -961,7 +937,7 @@ void DrawScene()
                     target_player.z = limite_parede_z;
                 }
 
-                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+                sec_cam_front = normalized(target_player - sec_cam_pos);
             }
             else if (mov_sec_camera == 2)
             {
@@ -995,17 +971,17 @@ void DrawScene()
                 
                 // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
                 glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
-                sec_cam_front = glm::normalize(bezier_dir);
+                sec_cam_front = normalized(bezier_dir);
             }
         }
         else // CAMERA_SECURITY
         {
             // Se estamos enxergando PELA câmera de segurança, o modelo físico 
             // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
+            sec_cam_front = normalized(glm::vec3(g_RenderCameraViewVector));
         }
         up = glm::vec3(0.0f, 1.0f, 0.0f);
-        rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        rotation_matrix = Matrix_Inverse(Matrix_Camera_View(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), glm::vec4(sec_cam_front, 0.0f), glm::vec4(up, 0.0f)));
         model = Matrix_Translate(8.0f, 2.8f, 5.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         SetObjectId(SEC_CAM);
@@ -1125,7 +1101,10 @@ static const float BOX_BODY_RADIUS    = 0.3f;
 static const float RADIO_BODY_RADIUS  = 0.2f;
 
 // Thunks: permitem ao módulo de portais chamar a renderização definida aqui.
-static void Portal_DrawScene() { DrawScene(); DrawTransparentObjects();}
+// Geometria OPACA vista por um portal. Os transparentes (vidro) são desenhados
+// à parte (pctx.drawTransparent), DEPOIS das molduras, para que o "glass effect"
+// tinja também as superfícies dos portais que estejam atrás do vidro.
+static void Portal_DrawScene() { DrawScene(); }
 static void Portal_DrawPlane() { DrawVirtualObject("the_plane"); }
 
 int main(int argc, char* argv[])
@@ -1357,6 +1336,7 @@ int main(int argc, char* argv[])
     pctx.objectIdUniform   = g_object_id_uniform;
     pctx.portalPassUniform = g_portal_pass_uniform;
     pctx.drawScene         = Portal_DrawScene;
+    pctx.drawTransparent   = DrawTransparentObjects;
     pctx.drawPlane         = Portal_DrawPlane;
     Portal_SetGLContext(pctx);
 
@@ -1518,13 +1498,13 @@ int main(int argc, char* argv[])
         desired_dz += g_PlayerPortalVel.z * deltaTime;
         g_PlayerPortalVel *= std::exp(-deltaTime * 3.0f);
 
-        TryMovePlayer(desired_dx, desired_dz);
+        TryMovePlayer(g_CollisionWorld, CurrentSceneState(), Pos_Player, desired_dx, desired_dz);
 
         // Pulo: detectamos a borda de subida da tecla espaço (o instante em que
         // ela é pressionada, não enquanto fica segurada) e só permitimos pular
         // quando o jogador está apoiado no chão (sem pulo duplo no ar)
         bool spacePressedNow = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround() && g_GameStarted)
+        if (spacePressedNow && !g_SpaceWasPressed && IsPlayerOnGround(g_CollisionWorld, CurrentSceneState(), glm::vec3(Pos_Player)) && g_GameStarted)
         {
             // Aplica a força física para cima
             g_PlayerVelocityY = FORCA_PULO;
@@ -1552,7 +1532,7 @@ int main(int argc, char* argv[])
         // Gravidade: aceleramos a velocidade vertical e tentamos aplicar o
         // deslocamento resultante; colisões com chão/teto zeram a velocidade
         g_PlayerVelocityY += GRAVIDADE * deltaTime;
-        TryMovePlayerVertical(g_PlayerVelocityY * deltaTime);
+        TryMovePlayerVertical(g_CollisionWorld, CurrentSceneState(), Pos_Player, g_PlayerVelocityY, g_PlayerVelocityY * deltaTime);
 
         // --- Portais: travessia do jogador (SNAP) ---
         // Monta a velocidade 3D atual (horizontal pretendida + vertical), deixa o
@@ -1642,7 +1622,7 @@ int main(int argc, char* argv[])
             camera_view_vector = glm::vec4(vx, vy, vz, 0.0f);
 
             // Sistema de Som de Passos (Footsteps)
-            if (isMoving && IsPlayerOnGround()) 
+            if (isMoving && IsPlayerOnGround(g_CollisionWorld, CurrentSceneState(), glm::vec3(Pos_Player))) 
             {
                 // Acumula o tempo que passou
                 g_FootstepTimer += deltaTime;
@@ -1695,8 +1675,8 @@ int main(int argc, char* argv[])
                     float dist_x = std::abs(target_player.x - camera_position_c.x);
                     float dist_z = std::abs(target_player.z - camera_position_c.z);
                     float dist = std::max(dist_x, dist_z);
-                    float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
-                    float limite_parede = glm::mix(-1.3f, -2.8f, t);
+                    float t = clampf((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+                    float limite_parede = lerp(-1.3f, -2.8f, t);
                     
                     if (target_player.x < limite_parede) target_player.x = limite_parede;
                     if (target_player.z < limite_parede) target_player.z = limite_parede;
@@ -1818,9 +1798,9 @@ int main(int argc, char* argv[])
             else {
                 // Posição aproximada do bolo que configuramos no cenário (X: 8.0, Y: -0.2, Z: 8.15)
                 glm::vec3 cakePos = glm::vec3(8.0f, -0.2f, 8.15f);
-                float distToCake = glm::distance(glm::vec3(Pos_Player), cakePos);
-                glm::vec3 dirToCake = glm::normalize(cakePos - glm::vec3(Pos_Player));
-                float dotCake = glm::dot(dirToCake, glm::vec3(camera_view_vector));
+                float distToCake = distancePoints(glm::vec3(Pos_Player), cakePos);
+                glm::vec3 dirToCake = normalized(cakePos - glm::vec3(Pos_Player));
+                float dotCake = dotproduct(dirToCake, glm::vec3(camera_view_vector));
 
                 // CHECA A VITÓRIA (O BOLO) PRIMEIRO
                 if (distToCake < 2.5f && dotCake > 0.85f && !g_GameWon) {
@@ -1836,14 +1816,14 @@ int main(int argc, char* argv[])
                 }
                 // CHECA OS OBJETOS FÍSICOS SE NÃO GANHOU
                 else {
-                    float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
-                    float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
+                    float distToBox = distancePoints(glm::vec3(Pos_Player), g_BoxPosition);
+                    float distToRadio = distancePoints(glm::vec3(Pos_Player), g_RadioPosition);
                     
-                    glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
-                    glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
+                    glm::vec3 dirToBox = normalized(g_BoxPosition - glm::vec3(Pos_Player));
+                    glm::vec3 dirToRadio = normalized(g_RadioPosition - glm::vec3(Pos_Player));
                     
-                    float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
-                    float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
+                    float dotBox = dotproduct(dirToBox, glm::vec3(camera_view_vector));
+                    float dotRadio = dotproduct(dirToRadio, glm::vec3(camera_view_vector));
                     
                     if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
                         g_IsHoldingBox = true;
@@ -1876,7 +1856,7 @@ int main(int argc, char* argv[])
             // Se ela bater na parede no caminho, ela para antes de atravessar.
             for (float d = 0.2f; d <= max_dist; d += step) {
                 glm::vec3 testPos = start + dir * d;
-                if (BoxCollidesAt(testPos)) {
+                if (BoxCollidesAt(g_CollisionWorld, CurrentSceneState(), testPos)) {
                     break; // Bateu na parede, usamos a última posição válida (finalPos)
                 }
                 finalPos = testPos;
@@ -1894,7 +1874,7 @@ int main(int argc, char* argv[])
             // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
             // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 1.0 unidades,
             // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
-            float distToPlayer = glm::distance(start, finalPos);
+            float distToPlayer = distancePoints(start, finalPos);
             if (distToPlayer < 1.0f) {
                 g_IsHoldingBox = false;
             } */
@@ -1910,7 +1890,7 @@ int main(int argc, char* argv[])
 
             // SISTEMA ANTI-PRISÃO (Caixa bate no jogador/cenário e não atravessa)
             // Se essa queda não fizer ela bater no chão ou num objeto, ela cai
-            if (!BoxCollidesAt(candidatePos)) {
+            if (!BoxCollidesAt(g_CollisionWorld, CurrentSceneState(), candidatePos)) {
                 g_BoxPosition.y = candidatePos.y;
             } else {
                 g_BoxVelocityY = 0.0f; // Bateu, zera a velocidade de queda
@@ -1922,7 +1902,7 @@ int main(int argc, char* argv[])
                 glm::vec3 ch = g_BoxPosition;
                 ch.x += g_BoxVel.x * deltaTime;
                 ch.z += g_BoxVel.z * deltaTime;
-                if (!BoxCollidesAt(ch)) g_BoxPosition = ch;
+                if (!BoxCollidesAt(g_CollisionWorld, CurrentSceneState(), ch)) g_BoxPosition = ch;
                 else { g_BoxVel.x = 0.0f; g_BoxVel.z = 0.0f; }
                 g_BoxVel *= std::exp(-deltaTime * 1.5f);
             }
@@ -1958,7 +1938,7 @@ int main(int argc, char* argv[])
             // Se ele bater na parede no caminho, ele para antes de atravessar.
             for (float d = 0.2f; d <= max_dist; d += step) {
                 glm::vec3 testPos = start + dir * d;
-                if (RadioCollidesAt(testPos)) {
+                if (RadioCollidesAt(g_CollisionWorld, CurrentSceneState(), testPos)) {
                     break; // Bateu na parede, usamos a última posição válida (finalPos)
                 }
                 finalPos = testPos;
@@ -1978,7 +1958,7 @@ int main(int argc, char* argv[])
             // Se você anda contra a parede, a parede empurra o rádio na direção da câmera.
             // Se a distância entre a origem do raio (jogador) e o rádio ficar menor que 1.0 unidades,
             // o jogador solta o rádio automaticamente para evitar que a câmera entre nele.
-            /* float distToPlayer = glm::distance(start, finalPos);
+            /* float distToPlayer = distancePoints(start, finalPos);
             if (distToPlayer < 1.0f) {
                 g_IsHoldingRadio = false;
             } */
@@ -1994,7 +1974,7 @@ int main(int argc, char* argv[])
 
             // SISTEMA ANTI-PRISÃO (Rádio bate no jogador/cenário e não atravessa)
             // Se essa queda não fizer ele bater no chão ou num objeto, ele cai
-            if (!RadioCollidesAt(candidatePos)) {
+            if (!RadioCollidesAt(g_CollisionWorld, CurrentSceneState(), candidatePos)) {
                 g_RadioPosition.y = candidatePos.y;
             } else {
                 g_RadioVelocityY = 0.0f; // Bateu, zera a velocidade de queda
@@ -2006,7 +1986,7 @@ int main(int argc, char* argv[])
                 glm::vec3 ch = g_RadioPosition;
                 ch.x += g_RadioVel.x * deltaTime;
                 ch.z += g_RadioVel.z * deltaTime;
-                if (!RadioCollidesAt(ch)) g_RadioPosition = ch;
+                if (!RadioCollidesAt(g_CollisionWorld, CurrentSceneState(), ch)) g_RadioPosition = ch;
                 else { g_RadioVel.x = 0.0f; g_RadioVel.z = 0.0f; }
                 g_RadioVel *= std::exp(-deltaTime * 1.5f);
             }
@@ -2169,522 +2149,66 @@ int main(int argc, char* argv[])
 // Funções de detecção e resposta a colisões (jogador vs. cenário)
 // ----------------------------------------------------------------------------
 
-// Testa se um cilindro vertical (centrado em pos_xz, com raio fixo e faixa de
-// altura [y_min, y_max]) sobrepõe a CollisionAABB 'box'. O teste é decomposto
-// em (1) overlap do intervalo vertical e (2) distância do centro do círculo
-// (projeção do cilindro no plano XZ) ao retângulo formado pela AABB em XZ.
-bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box)
+// As funções geométricas puras CylinderIntersectsAABB, CylinderIntersectsLine
+// e ComputeWorldAABB foram movidas para o módulo collisions (collisions.h/.cpp).
+
+// As queries de colisão (PlayerCollidesAt, BoxCollidesAt, RadioCollidesAt,
+// IsButtonTriggered, IsPlayerOnGround) foram movidas para o módulo collisions
+// (collisions.h/.cpp); recebem o estado por parâmetro (CollisionWorld/SceneState).
+
+// Monta o snapshot do estado dinâmico do frame (posições/matrizes das entidades
+// móveis e flags) a ser passado às queries do módulo collisions. As model
+// matrices da caixa e do rádio são computadas aqui (com Matrix_*), já que o
+// módulo de colisão é desacoplado de matrices.h.
+SceneState CurrentSceneState()
 {
-    // Overlap no eixo vertical (Y)
-    if (y_max < box.min.y || y_min > box.max.y)
-        return false;
-
-    // Ponto do retângulo (projeção da AABB em XZ) mais próximo do centro do círculo
-    float closest_x = glm::clamp(pos_xz.x, box.min.x, box.max.x);
-    float closest_z = glm::clamp(pos_xz.y, box.min.z, box.max.z);
-
-    float dx = pos_xz.x - closest_x;
-    float dz = pos_xz.y - closest_z;
-
-    return (dx*dx + dz*dz) < (raio * raio);
+    SceneState s;
+    s.boxPos        = g_BoxPosition;
+    s.radioPos      = g_RadioPosition;
+    s.boxModel      = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z)
+                    * Matrix_Rotate_Y(g_BoxAngleY)
+                    * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
+    s.radioModel    = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z)
+                    * Matrix_Rotate_Y(g_RadioAngleY)
+                    * Matrix_Scale(1.0f/9.0f, 1.0f/9.0f, 1.0f/9.0f);
+    s.holdingBox    = g_IsHoldingBox;
+    s.holdingRadio  = g_IsHoldingRadio;
+    s.buttonPressed = g_IsButtonPressed;
+    return s;
 }
 
-bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min_jogador, float y_max_jogador, const CollisionLine& line)
-{
-    // 1. Testa o overlap no eixo vertical (Y)
-    if (y_max_jogador < line.y_min || y_min_jogador > line.y_max)
-        return false;
+// As funções de movimento do jogador (TryMovePlayer, TryMovePlayerVertical)
+// foram movidas para o módulo collisions (collisions.h/.cpp); modificam a
+// posição/velocidade recebidas por referência.
 
-    // 2. Matemática vetorial no plano XZ
-    glm::vec2 ab = line.p2 - line.p1;       // Vetor da parede
-    glm::vec2 ap = pos_xz - line.p1;        // Vetor do início da parede até o jogador
-
-    // Calcula a projeção escalar de AP sobre AB
-    float proj = glm::dot(ap, ab);
-    float ab_len_sq = glm::dot(ab, ab);     // Comprimento da parede ao quadrado
-    
-    // Calcula 't', que é a porcentagem da projeção ao longo da parede
-    float t = proj / ab_len_sq;
-    
-    // Grampeia 't' entre 0 e 1 para garantir que não estamos checando um ponto além da parede
-    t = glm::clamp(t, 0.0f, 1.0f);
-
-    // Encontra a coordenada exata do ponto mais próximo na parede
-    glm::vec2 closest_point = line.p1 + t * ab;
-    
-    // Calcula a distância do jogador até esse ponto
-    glm::vec2 distance_vec = pos_xz - closest_point;
-    
-    // Se a distância ao quadrado for menor que o raio ao quadrado, é colisão!
-    return glm::dot(distance_vec, distance_vec) < (raio * raio);
-}
-
-// Testa se o cilindro do jogador, na posição candidata 'pos' (mesma referência
-// de Pos_Player — não os pés diretamente, ver PLAYER_FEET_Y_OFFSET), colide
-// com alguma AABB do cenário registrada em g_CollisionAABBs.
-//
-// O intervalo vertical testado é "encolhido" por COLLISION_SKIN em cada ponta:
-// sem isso, ao ficar exatamente apoiado no chão (pés tocando o topo da AABB do
-// piso) o teste consideraria o jogador permanentemente colidindo também na
-// horizontal, travando todo o movimento. Esse encolhimento permite uma
-// penetração tolerável de poucos centímetros, imperceptível no jogo.
-bool PlayerCollidesAt(const glm::vec3& pos)
-{
-    glm::vec2 pos_xz(pos.x, pos.z);
-    float feet_y = pos.y + PLAYER_FEET_Y_OFFSET;
-    float y_min = feet_y + COLLISION_SKIN;
-    float y_max = feet_y + g_PlayerCollider.altura - COLLISION_SKIN;
-
-    // Testa colisões com caixas estáticas (cenário)
-    for (const CollisionAABB& box : g_CollisionAABBs)
-    {
-        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, box))
-            return true;
-    }
-
-    // Testa colisões com paredes diagonais
-    for (const CollisionLine& line : g_CollisionLines) {
-        if (CylinderIntersectsLine(pos_xz, g_PlayerCollider.raio, y_min, y_max, line))
-            return true;
-    }
-
-    // Testa colisão dinâmica com a PORTA FECHADA
-    if (!g_IsButtonPressed) {
-        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, g_ClosedDoorAABB))
-            return true;
-    }
-
-    // Testa colisão dinâmica com a CAIXA
-    // O jogador só esbarra na caixa se NÃO estiver segurando ela
-    if (!g_IsHoldingBox) 
-    {
-        // Cria a matriz do cubo exatamente onde ele está no mundo agora
-        glm::mat4 model_cube = Matrix_Translate(g_BoxPosition.x, g_BoxPosition.y, g_BoxPosition.z) 
-                            * Matrix_Rotate_Y(g_BoxAngleY) 
-                            * Matrix_Scale(1.0f/8.0f, 1.0f/8.0f, 1.0f/8.0f);
-    
-        // Calcula a AABB da caixa naquele exato frame
-        CollisionAABB boxAABB = ComputeWorldAABB(
-            g_VirtualScene["Cube"].bbox_min, 
-            g_VirtualScene["Cube"].bbox_max, 
-            model_cube
-        );
-        
-        // Testa se o cilindro do jogador bateu nessa AABB gerada
-        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, boxAABB))
-            return true;    
-    }
-
-    // Testa colisão dinâmica com o RÁDIO
-    if (!g_IsHoldingRadio) 
-    {
-        // Matriz do rádio baseada em sua escala visual (1/9)
-        glm::mat4 model_radio = Matrix_Translate(g_RadioPosition.x, g_RadioPosition.y, g_RadioPosition.z) 
-                              * Matrix_Rotate_Y(g_RadioAngleY) 
-                              * Matrix_Scale(1.0f/9.0f, 1.0f/9.0f, 1.0f/9.0f);
-    
-        // Calcula a AABB usando as bounding boxes locais carregadas pelo tinyobj (usando a malha "Shell" como referência)
-        CollisionAABB radioAABB = ComputeWorldAABB(
-            g_VirtualScene["Shell"].bbox_min, 
-            g_VirtualScene["Shell"].bbox_max, 
-            model_radio
-        );
-        
-        if (CylinderIntersectsAABB(pos_xz, g_PlayerCollider.raio, y_min, y_max, radioAABB))
-            return true;    
-    }
-
-    return false;
-}
-
-// Verifica se a caixa está atravessando o cenário físico
-bool BoxCollidesAt(glm::vec3 pos) {
-    // Escala aproximada do cubo no mundo (metade do tamanho total dele)
-    float s = 0.3f; 
-    glm::vec3 min_box = pos + glm::vec3(-s, -s, -s);
-    glm::vec3 max_box = pos + glm::vec3(s, s, s);
-
-    // Testa colisões com o cenário retilíneo (chão, teto, paredes AABB)
-    for (const CollisionAABB& aabb : g_CollisionAABBs) {
-        if (max_box.x > aabb.min.x && min_box.x < aabb.max.x &&
-            max_box.y > aabb.min.y && min_box.y < aabb.max.y &&
-            max_box.z > aabb.min.z && min_box.z < aabb.max.z) 
-        {
-            return true;
-        }
-    }
-    
-    // Testa colisões com paredes diagonais (aproveitando o teste do cilindro)
-    glm::vec2 pos_xz(pos.x, pos.z);
-    for (const CollisionLine& line : g_CollisionLines) {
-        // Usamos a meia-largura (s) como raio para o teste contra a linha
-        if (CylinderIntersectsLine(pos_xz, s, min_box.y, max_box.y, line)) {
-            return true;
-        }
-    }
-
-    // Testa colisão da caixa contra a PORTA FECHADA (CÓDIGO NOVO)
-    if (!g_IsButtonPressed) {
-        if (max_box.x > g_ClosedDoorAABB.min.x && min_box.x < g_ClosedDoorAABB.max.x &&
-            max_box.y > g_ClosedDoorAABB.min.y && min_box.y < g_ClosedDoorAABB.max.y &&
-            max_box.z > g_ClosedDoorAABB.min.z && min_box.z < g_ClosedDoorAABB.max.z) 
-        {
-            return true;
-        }
-    }
-
-    // Testa colisão dinâmica contra o RÁDIO
-    // Usa os mesmos tamanhos que você configurou no RadioCollidesAt
-    float r_xz = 0.15f; 
-    float r_y  = 0.22f; 
-    glm::vec3 min_radio = g_RadioPosition + glm::vec3(-r_xz, -r_y, -r_xz);
-    glm::vec3 max_radio = g_RadioPosition + glm::vec3(r_xz, r_y, r_xz);
-
-    // Se a AABB da caixa sobrepor a AABB do rádio, é colisão!
-    if (max_box.x > min_radio.x && min_box.x < max_radio.x &&
-        max_box.y > min_radio.y && min_box.y < max_radio.y &&
-        max_box.z > min_radio.z && min_box.z < max_radio.z) 
-    {
-        return true;
-    }
-
-    return false;
-}
-
-bool RadioCollidesAt(glm::vec3 pos) {
-    float s_xz = 0.15f; // Largura do rádio
-    
-    // É esta variável 's_y' que você deve diminuir se ele ainda estiver flutuando, 
-    // ou aumentar se ele estiver afundando no chão!
-    float s_y = 0.03f;  
-
-    glm::vec3 min_radio = pos + glm::vec3(-s_xz, -s_y, -s_xz);
-    glm::vec3 max_radio = pos + glm::vec3(s_xz, s_y, s_xz);
-
-    for (const CollisionAABB& aabb : g_CollisionAABBs) {
-        if (max_radio.x > aabb.min.x && min_radio.x < aabb.max.x &&
-            max_radio.y > aabb.min.y && min_radio.y < aabb.max.y &&
-            max_radio.z > aabb.min.z && min_radio.z < aabb.max.z) 
-        {
-            return true;
-        }
-    }
-    glm::vec2 pos_xz(pos.x, pos.z);
-    for (const CollisionLine& line : g_CollisionLines) {
-        if (CylinderIntersectsLine(pos_xz, s_xz, min_radio.y, max_radio.y, line)) {
-            return true;
-        }
-    }
-    if (!g_IsButtonPressed) {
-        if (max_radio.x > g_ClosedDoorAABB.min.x && min_radio.x < g_ClosedDoorAABB.max.x &&
-            max_radio.y > g_ClosedDoorAABB.min.y && min_radio.y < g_ClosedDoorAABB.max.y &&
-            max_radio.z > g_ClosedDoorAABB.min.z && min_radio.z < g_ClosedDoorAABB.max.z) 
-        {
-            return true;
-        }
-    }
-
-    // Testa colisão dinâmica contra a CAIXA
-    // Usa o tamanho simplificado (0.25f) que você configurou no BoxCollidesAt
-    float b_s = 0.25f; 
-    glm::vec3 min_box = g_BoxPosition + glm::vec3(-b_s, -b_s, -b_s);
-    glm::vec3 max_box = g_BoxPosition + glm::vec3(b_s, b_s, b_s);
-
-    // Se a AABB do rádio sobrepor a AABB da caixa, é colisão!
-    if (max_radio.x > min_box.x && min_radio.x < max_box.x &&
-        max_radio.y > min_box.y && min_radio.y < max_box.y &&
-        max_radio.z > min_box.z && min_radio.z < max_box.z) 
-    {
-        return true;
-    }
-
-    return false;
-}
-
-bool IsButtonTriggered() {
-    // Definir a área do botão (o gatilho)
-    glm::vec3 b_min = glm::vec3(8.5f, -1.0f, -1.5f);
-    glm::vec3 b_max = glm::vec3(9.5f, -0.5f, -0.5f);
-
-    // Testa Jogador
-    // O cilindro do jogador está sobre o botão?
-    if (Pos_Player.x >= b_min.x && Pos_Player.x <= b_max.x &&
-        Pos_Player.z >= b_min.z && Pos_Player.z <= b_max.z &&
-        (Pos_Player.y + PLAYER_FEET_Y_OFFSET) <= b_max.y) {
-        return true;
-    }
-
-    // Testa Caixa
-    // A caixa está sobre o botão?
-    if (g_BoxPosition.x >= b_min.x && g_BoxPosition.x <= b_max.x &&
-        g_BoxPosition.z >= b_min.z && g_BoxPosition.z <= b_max.z &&
-        g_BoxPosition.y <= b_max.y) {
-        return true;
-    }
-
-    return false;
-}
-
-// Verifica se há piso imediatamente abaixo dos pés do jogador. Usado para só
-// permitir o pulo quando ele está apoiado em uma superfície (sem pulo duplo).
-bool IsPlayerOnGround()
-{
-    const float probe_dist = 0.05f;
-    return PlayerCollidesAt(glm::vec3(Pos_Player.x, Pos_Player.y - probe_dist, Pos_Player.z));
-}
-
-// Aplica um deslocamento vertical 'dy' ao jogador (gravidade/pulo), verificando
-// colisão contra o cenário. Se a posição candidata colide (chão ao cair, teto
-// ao subir), a velocidade vertical é zerada e o jogador permanece onde está.
-void TryMovePlayerVertical(float dy)
-{
-    glm::vec3 candidate = glm::vec3(Pos_Player.x, Pos_Player.y + dy, Pos_Player.z);
-    if (!PlayerCollidesAt(candidate))
-        Pos_Player.y = candidate.y;
-    else
-        g_PlayerVelocityY = 0.0f;
-}
-
-// Move o jogador pelo deslocamento desejado (dx, dz), testando e aplicando
-// cada eixo separadamente. Isso produz o efeito de "deslizar" ao longo de
-// paredes: se o movimento em um eixo causa colisão, ele é descartado, mas o
-// movimento no outro eixo continua sendo aplicado normalmente.
-void TryMovePlayer(float dx, float dz)
-{
-    // Define a altura máxima de um degrau que o jogador consegue subir apenas andando.
-    // O seu botão é relativamente baixo, então 0.3f deve cobrir perfeitamente.
-    const float MAX_STEP_HEIGHT = 0.3f; 
-
-    // Tenta mover no eixo X
-    glm::vec3 candidate_x = glm::vec3(Pos_Player.x + dx, Pos_Player.y, Pos_Player.z);
-    if (!PlayerCollidesAt(candidate_x))
-    {
-        Pos_Player.x = candidate_x.x;
-    }
-    else if (IsPlayerOnGround()) 
-    {
-        // Bateu em X! O jogador está no chão, então testamos a posição mais alta (o degrau)
-        glm::vec3 candidate_step_x = glm::vec3(Pos_Player.x + dx, Pos_Player.y + MAX_STEP_HEIGHT, Pos_Player.z);
-        if (!PlayerCollidesAt(candidate_step_x))
-        {
-            Pos_Player.x = candidate_step_x.x;
-            Pos_Player.y = candidate_step_x.y; // Levanta o jogador para cima do obstáculo
-        }
-    }
-
-    // Tenta mover no eixo Z
-    glm::vec3 candidate_z = glm::vec3(Pos_Player.x, Pos_Player.y, Pos_Player.z + dz);
-    if (!PlayerCollidesAt(candidate_z))
-    {
-        Pos_Player.z = candidate_z.z;
-    }
-    else if (IsPlayerOnGround())
-    {
-        // Bateu em Z! Testamos a subida no degrau também.
-        glm::vec3 candidate_step_z = glm::vec3(Pos_Player.x, Pos_Player.y + MAX_STEP_HEIGHT, Pos_Player.z + dz);
-        if (!PlayerCollidesAt(candidate_step_z))
-        {
-            Pos_Player.z = candidate_step_z.z;
-            Pos_Player.y = candidate_step_z.y;
-        }
-    }
-}
-
-// Calcula a AABB de mundo de um objeto a partir da sua AABB local (de
-// g_VirtualScene) e da matriz "model" usada para desenhá-lo: transforma os 8
-// cantos da AABB local pela matriz e recomputa o min/max resultante. Válido
-// mesmo quando a matriz inclui rotação e/ou escala.
-CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model)
-{
-    glm::vec3 corners[8] = {
-        glm::vec3(local_min.x, local_min.y, local_min.z),
-        glm::vec3(local_max.x, local_min.y, local_min.z),
-        glm::vec3(local_min.x, local_max.y, local_min.z),
-        glm::vec3(local_max.x, local_max.y, local_min.z),
-        glm::vec3(local_min.x, local_min.y, local_max.z),
-        glm::vec3(local_max.x, local_min.y, local_max.z),
-        glm::vec3(local_min.x, local_max.y, local_max.z),
-        glm::vec3(local_max.x, local_max.y, local_max.z),
-    };
-
-    glm::vec3 world_min( std::numeric_limits<float>::max());
-    glm::vec3 world_max(-std::numeric_limits<float>::max());
-    for (const glm::vec3& corner : corners)
-    {
-        glm::vec3 world_corner = glm::vec3(model * glm::vec4(corner, 1.0f));
-        world_min = glm::min(world_min, world_corner);
-        world_max = glm::max(world_max, world_corner);
-    }
-
-    return CollisionAABB{ world_min, world_max };
-}
-
-// Preenche g_CollisionAABBs com as AABBs de mundo do cenário estático contra
-// o qual o jogador colide: paredes/chão/teto das duas salas (definidas
-// manualmente, já que a geometria é simples e alinhada aos eixos) mais o
-// cubo e o botão (cuja AABB local é transformada pela matriz "model" usada ao
-// desenhá-los). Chamada uma única vez, no setup, pois o cenário é estático.
+// Reconstrói g_CollisionWorld. Lê de g_VirtualScene as bboxes locais e monta as
+// model matrices (com Matrix_*) dos objetos do cenário, injetando-as em
+// CollisionSceneGeometry, e delega a montagem a BuildCollisionWorld (módulo
+// collisions). Chamada uma única vez no setup, pois o cenário é estático.
 void SetupCollisionAABBs()
 {
-    g_CollisionAABBs.clear();
-    g_CollisionLines.clear();
+    CollisionSceneGeometry geo;
 
-    // Espessura "fake" usada para dar volume às paredes/chão/teto no teste de colisão
-    const float wall_t = 0.1f;
+    // Botão: mesma matriz "model" usada para desenhá-lo
+    // (Matrix_Translate(9,-1,-1) * Matrix_Scale(1.65,1.65,1.65)).
+    geo.buttonMin   = g_VirtualScene["portal_button_reduced_2"].bbox_min;
+    geo.buttonMax   = g_VirtualScene["portal_button_reduced_2"].bbox_max;
+    geo.buttonModel = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(1.65f, 1.65f, 1.65f);
 
-    // Limites das salas (x,z) e altura (y), conforme mapeamento da cena
-    const float sala1_min = -4.0f, sala1_max = 4.0f;
-    const float sala2_min = 4.2f,  sala2_max = 12.0f;
-    float s3_xmin = 6.0f, s3_xmax = 10.0f;
-    float s3_zmin = 6.2f, s3_zmax = 10.1f;
-    const float y_min = -1.0f, y_max = 3.0f;
+    // Porta 2 fechada. Usamos 3.14159265f no lugar de M_PI pois a macro é local ao main.
+    geo.doorMin   = g_VirtualScene["portal_door_combined_model_1"].bbox_min;
+    geo.doorMax   = g_VirtualScene["portal_door_combined_model_1"].bbox_max;
+    geo.doorModel = Matrix_Translate(8.0f, -1.0f, 6.1f)
+                  * Matrix_Rotate_Y(3.14159265f)
+                  * Matrix_Scale(1.5f, 1.5f, 1.5f);
 
-    // A porta entre a Sala 1 e a Sala 2 (centrada em Z = 0)
-    const float porta_z = 0.0f;
-    // A nova porta no final da Sala 2 (centrada em X = 8.0)
-    const float porta2_x = 8.0f; 
-    
-    const float porta_meia_largura = 0.6f; 
-    const float porta_topo_y = 0.5f;      
+    // AABBs locais (carregadas pelo tinyobj) da caixa ("Cube") e do rádio ("Shell").
+    geo.boxLocalMin   = g_VirtualScene["Cube"].bbox_min;
+    geo.boxLocalMax   = g_VirtualScene["Cube"].bbox_max;
+    geo.radioLocalMin = g_VirtualScene["Shell"].bbox_min;
+    geo.radioLocalMax = g_VirtualScene["Shell"].bbox_max;
 
-    // Cria uma laje retangular de parede (AABB)
-    auto add_wall_slab = [&](float x_lo, float x_hi, float z_lo, float z_hi, float y_lo, float y_hi)
-    {
-        if (z_lo < z_hi && x_lo < x_hi)
-            g_CollisionAABBs.push_back({ glm::vec3(x_lo, y_lo, z_lo), glm::vec3(x_hi, y_hi, z_hi) });
-    };
-
-    // Corta um buraco em uma parede que corre paralela ao eixo Z
-    auto add_wall_with_doorway = [&](float x_lo, float x_hi, float z_lo, float z_hi)
-    {
-        add_wall_slab(x_lo, x_hi, z_lo, porta_z - porta_meia_largura, y_min, y_max);
-        add_wall_slab(x_lo, x_hi, porta_z + porta_meia_largura, z_hi, y_min, y_max);
-        add_wall_slab(x_lo, x_hi, porta_z - porta_meia_largura, porta_z + porta_meia_largura, porta_topo_y, y_max);
-    };
-
-    // Corta um buraco em uma parede que corre paralela ao eixo X (NOVO)
-    auto add_wall_with_doorway_z = [&](float x_lo, float x_hi, float z_lo, float z_hi)
-    {
-        add_wall_slab(x_lo, porta2_x - porta_meia_largura, z_lo, z_hi, y_min, y_max);
-        add_wall_slab(porta2_x + porta_meia_largura, x_hi, z_lo, z_hi, y_min, y_max);
-        add_wall_slab(porta2_x - porta_meia_largura, porta2_x + porta_meia_largura, z_lo, z_hi, porta_topo_y, y_max);
-    };
-
-    // Constrói a sala inteira. Adicionamos o parâmetro 'porta_em_z_max' com valor padrão 'false'.
-    auto add_room_aabbs = [&](float x_min, float x_max, float z_min, float z_max, bool porta_em_x_min, bool porta_em_x_max, bool porta_em_z_max = false)
-    {
-        // Chão e teto
-        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min - wall_t, y_min);
-        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_max, y_max + wall_t);
-
-        // Parede em x = x_min
-        if (porta_em_x_min)
-            add_wall_with_doorway(x_min - wall_t, x_min, z_min - wall_t, z_max + wall_t);
-        else
-            add_wall_slab(x_min - wall_t, x_min, z_min - wall_t, z_max + wall_t, y_min, y_max);
-
-        // Parede em x = x_max
-        if (porta_em_x_max)
-            add_wall_with_doorway(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t);
-        else
-            add_wall_slab(x_max, x_max + wall_t, z_min - wall_t, z_max + wall_t, y_min, y_max);
-
-        // Parede em z = z_min (Fundos)
-        add_wall_slab(x_min - wall_t, x_max + wall_t, z_min - wall_t, z_min, y_min, y_max);
-        
-        // Parede em z = z_max (Frente)
-        if (porta_em_z_max)
-            add_wall_with_doorway_z(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t);
-        else
-            add_wall_slab(x_min - wall_t, x_max + wall_t, z_max, z_max + wall_t, y_min, y_max);
-    };
-
-    // Chão e teto físicos da Sala 3
-    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_min - wall_t, y_min);
-    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_max, y_max + wall_t);
-
-    // Parede Lateral Direita da Sala 3 (X = 6.0)
-    add_wall_slab(s3_xmin - wall_t, s3_xmin, s3_zmin - wall_t, s3_zmax + wall_t, y_min, y_max);
-
-    // Parede Lateral Esquerda da Sala 3 (X = 10.0)
-    add_wall_slab(s3_xmax, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmax + wall_t, y_min, y_max);
-
-    // Parede da Frente da Sala 3 (Z = 10.1)
-    add_wall_slab(s3_xmin - wall_t, s3_xmax + wall_t, s3_zmax, s3_zmax + wall_t, y_min, y_max);
-
-    // Parede de Trás com Conexão/Porta da Sala 3 (Z = 6.2)
-    // Deixa o vão livre entre X = 7.4 e X = 8.6 para você passar vindo da Sala 2!
-    add_wall_slab(s3_xmin - wall_t, porta2_x - porta_meia_largura, s3_zmin - wall_t, s3_zmin, y_min, y_max);
-    add_wall_slab(porta2_x + porta_meia_largura, s3_xmax + wall_t, s3_zmin - wall_t, s3_zmin, y_min, y_max);
-    add_wall_slab(porta2_x - porta_meia_largura, porta2_x + porta_meia_largura, s3_zmin - wall_t, s3_zmin, porta_topo_y, y_max);
-
-    // Sala 1: x,z em [-4,+4] — porta na parede x=+4
-    add_room_aabbs(sala1_min, sala1_max, sala1_min, sala1_max, false, true);
-    
-    // Sala 2: x em [+4.2,+12], z em [-4,+6] — porta na parede x=+4.2 E porta na parede z=+6.0
-    // O último 'true' ativa o novo buraco que criamos!
-    add_room_aabbs(sala2_min, sala2_max, -4.0f, 6.0f, true, false, true);
-
-    // Paredes internas da Sala 1 ("prisão" central de vidro + parede sólida)
-    // Cada parede é um the_plane ([-1,1] em local) com as rotações aplicadas na renderização,
-    // resultando em lajes verticais de espessura wall_t centradas nas posições abaixo.
-    // Parede sólida em x=+1 (Agora a colisão começa exatamentente onde o visual começa!)
-    g_CollisionAABBs.push_back({ glm::vec3(1.0f, y_min, -1.0f), glm::vec3(1.0f + wall_t, y_max, 1.0f) });
-    // Parede de vidro em x=-1
-    g_CollisionAABBs.push_back({ glm::vec3(-1.0f - wall_t, y_min, -1.0f), glm::vec3(-1.0f + wall_t, y_max, 1.0f) });
-    // Parede de vidro em z=+1
-    g_CollisionAABBs.push_back({ glm::vec3(-1.0f, y_min, 1.0f - wall_t), glm::vec3(1.0f, y_max, 1.0f + wall_t) });
-    // Parede de vidro em z=-1
-    g_CollisionAABBs.push_back({ glm::vec3(-1.0f, y_min, -1.0f - wall_t), glm::vec3(1.0f, y_max, -1.0f + wall_t) });
-
-    // Botão: mesma matriz "model" usada para desenhá-lo (Matrix_Translate(9,-1,-1) * Matrix_Scale(1.65,1.65,1.65))
-    glm::mat4 model_button = Matrix_Translate(9.0f, -1.0f, -1.0f) * Matrix_Scale(1.65f, 1.65f, 1.65f);
-    g_CollisionAABBs.push_back(ComputeWorldAABB(g_VirtualScene["portal_button_reduced_2"].bbox_min, g_VirtualScene["portal_button_reduced_2"].bbox_max, model_button));
-
-    // Paredes Diagonais:
-    // Parede diagonal da Sala 2 (Centro: 11.0, -2.7 | Rotação: -45 graus | Escala: 2.0)
-    // Calculamos as extremidades aplicando o seno/cosseno de 45 graus (0.707) * escala (2.0) = 1.414
-    float offsetX = 1.414f;
-    float offsetZ = 1.414f;
-    
-    g_CollisionLines.push_back({
-        glm::vec2(11.0f - offsetX, -2.7f - offsetZ), // Ponto 1 (~ 9.586, -4.114)
-        glm::vec2(11.0f + offsetX, -2.7f + offsetZ), // Ponto 2 (~ 12.414, -1.286)
-        y_min,                                       // Chão (-1.0f)
-        y_max                                        // Teto (3.0f)
-    });
-
-    // Hitbox dinâmica da porta 2 (Fechada)
-    // Usamos 3.14159265f no lugar de M_PI pois a macro foi definida dentro do main
-    glm::mat4 model_door_closed = Matrix_Translate(8.0f, -1.0f, 6.1f) 
-                                * Matrix_Rotate_Y(3.14159265f) 
-                                * Matrix_Scale(1.5f, 1.5f, 1.5f);
-                                
-    g_ClosedDoorAABB = ComputeWorldAABB(
-        g_VirtualScene["portal_door_combined_model_1"].bbox_min, 
-        g_VirtualScene["portal_door_combined_model_1"].bbox_max, 
-        model_door_closed
-    );
-
-    // Hitboxes Físicas do Pilar e do Bolo (Sala 3)
-    // O pilar está centralizado em X=8.0 e Z=8.15.
-    // Com a escala de 0.2, os limites horizontais são exatamente:
-    // X: 8.0 - 0.2 até 8.0 + 0.2 (7.8f a 8.2f)
-    // Z: 8.15 - 0.2 até 8.15 + 0.2 (7.95f a 8.35f)
-    // E a altura vai do chão (-1.0f) até o topo do pilar (-0.2f)
-    g_CollisionAABBs.push_back({ 
-        glm::vec3(7.8f, -1.0f, 7.95f),  // Mínimo (X, Y, Z)
-        glm::vec3(8.2f, -0.2f, 8.35f)   // Máximo (X, Y, Z)
-    });
-
-    // O bolo está em cima do pilar (Y = -0.2f) com escala 0.1.
-    // X: 8.0 - 0.1 até 8.0 + 0.1 (7.9f a 8.1f)
-    // Z: 8.15 - 0.1 até 8.15 + 0.1 (8.05f a 8.25f)
-    // A altura vai do topo do pilar (-0.2f) até o topo das velas (cerca de 0.0f)
-    g_CollisionAABBs.push_back({ 
-        glm::vec3(7.9f, -0.2f, 8.05f),  // Mínimo (X, Y, Z)
-        glm::vec3(8.1f,  0.0f, 8.25f)   // Máximo (X, Y, Z)
-    });
+    g_CollisionWorld = BuildCollisionWorld(geo);
 }
 
 // Restaura a posição e o estado de todos os elementos dinâmicos do jogo
