@@ -81,8 +81,9 @@ struct PortalGLContext
     int    clipPlaneUniform  = -1;   // uniform vec4 clipPlane (vertex shader)
     int    objectIdUniform   = -1;
     int    portalPassUniform = -1;   // uniform int portalPass (fragment shader)
-    void (*drawScene)()      = nullptr; // desenha toda a geometria do mundo
-    void (*drawPlane)()      = nullptr; // desenha o quad "the_plane" (DrawVirtualObject)
+    void (*drawScene)()       = nullptr; // desenha a geometria OPACA do mundo
+    void (*drawTransparent)() = nullptr; // desenha os objetos transparentes (vidro)
+    void (*drawPlane)()       = nullptr; // desenha o quad "the_plane" (DrawVirtualObject)
 };
 
 void Portal_SetGLContext(const PortalGLContext& ctx);

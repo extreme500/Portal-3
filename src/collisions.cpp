@@ -7,7 +7,7 @@
 #include "collisions.h"
 
 #include <limits>
-#include <glm/glm.hpp> // glm::clamp, glm::dot, glm::min, glm::max
+#include "matrices.h" // operações próprias: dotproduct, clampf, Vector_Min/Max
 
 // Testa se um cilindro vertical (centrado em pos_xz, com raio fixo e faixa de
 // altura [y_min, y_max]) sobrepõe a CollisionAABB 'box'. O teste é decomposto
@@ -20,8 +20,8 @@ bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_m
         return false;
 
     // Ponto do retângulo (projeção da AABB em XZ) mais próximo do centro do círculo
-    float closest_x = glm::clamp(pos_xz.x, box.min.x, box.max.x);
-    float closest_z = glm::clamp(pos_xz.y, box.min.z, box.max.z);
+    float closest_x = clampf(pos_xz.x, box.min.x, box.max.x);
+    float closest_z = clampf(pos_xz.y, box.min.z, box.max.z);
 
     float dx = pos_xz.x - closest_x;
     float dz = pos_xz.y - closest_z;
@@ -40,14 +40,14 @@ bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min_jogador, f
     glm::vec2 ap = pos_xz - line.p1;        // Vetor do início da parede até o jogador
 
     // Calcula a projeção escalar de AP sobre AB
-    float proj = glm::dot(ap, ab);
-    float ab_len_sq = glm::dot(ab, ab);     // Comprimento da parede ao quadrado
+    float proj = dotproduct(ap, ab);
+    float ab_len_sq = dotproduct(ab, ab);     // Comprimento da parede ao quadrado
 
     // Calcula 't', que é a porcentagem da projeção ao longo da parede
     float t = proj / ab_len_sq;
 
     // Grampeia 't' entre 0 e 1 para garantir que não estamos checando um ponto além da parede
-    t = glm::clamp(t, 0.0f, 1.0f);
+    t = clampf(t, 0.0f, 1.0f);
 
     // Encontra a coordenada exata do ponto mais próximo na parede
     glm::vec2 closest_point = line.p1 + t * ab;
@@ -56,7 +56,7 @@ bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min_jogador, f
     glm::vec2 distance_vec = pos_xz - closest_point;
 
     // Se a distância ao quadrado for menor que o raio ao quadrado, é colisão!
-    return glm::dot(distance_vec, distance_vec) < (raio * raio);
+    return dotproduct(distance_vec, distance_vec) < (raio * raio);
 }
 
 CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model)
@@ -77,8 +77,8 @@ CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const g
     for (const glm::vec3& corner : corners)
     {
         glm::vec3 world_corner = glm::vec3(model * glm::vec4(corner, 1.0f));
-        world_min = glm::min(world_min, world_corner);
-        world_max = glm::max(world_max, world_corner);
+        world_min = Vector_Min(world_min, world_corner);
+        world_max = Vector_Max(world_max, world_corner);
     }
 
     return CollisionAABB{ world_min, world_max };

@@ -680,16 +680,16 @@ void DrawScene()
 
                 // Mapeamos a distância para um fator de 0.0 (perto) a 1.0 (longe)
                 // Se estiver a 1.0 de distância ou menos, fator = 0.0. Se estiver a 1.5 ou mais, fator = 1.0.
-                float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+                float t = clampf((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
 
                 // Interpolação linear (Lerp): o limite varia suavemente entre -1.38 e -2.8
-                float limite_parede = glm::mix(-1.3f, -2.8f, t);
+                float limite_parede = lerp(-1.3f, -2.8f, t);
 
                 // Aplicação do limite calculado
                 if (target_player.x < limite_parede) target_player.x = limite_parede;
                 if (target_player.z < limite_parede) target_player.z = limite_parede;
 
-                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+                sec_cam_front = normalized(target_player - sec_cam_pos);
             }
             else if (mov_sec_camera == 2)
             {
@@ -723,17 +723,17 @@ void DrawScene()
                 
                 // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
                 glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
-                sec_cam_front = glm::normalize(bezier_dir);
+                sec_cam_front = normalized(bezier_dir);
             }
         }
         else // CAMERA_SECURITY
         {
             // Se estamos enxergando PELA câmera de segurança, o modelo físico 
             // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
+            sec_cam_front = normalized(glm::vec3(g_RenderCameraViewVector));
         }
         glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-        glm::mat4 rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        glm::mat4 rotation_matrix = Matrix_Inverse(Matrix_Camera_View(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), glm::vec4(sec_cam_front, 0.0f), glm::vec4(up, 0.0f)));
         model = Matrix_Translate(-3.8f, 2.8f, -3.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         SetObjectId(SEC_CAM);
@@ -924,12 +924,12 @@ void DrawScene()
                 // Mapeamos essa distância lateral para o nosso fator 't' (0.0 a 1.0)
                 // Se ele estiver até 1.0 unidade pro lado, t = 0 (Perto)
                 // Se ele estiver a 3.0 unidades ou mais pro lado, t = 1 (Longe nos cantos)
-                float t = glm::clamp((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
+                float t = clampf((dist_x - 1.0f) / (3.0f - 1.0f), 0.0f, 1.0f);
 
                 // Interpolação linear (Lerp): 
                 // Se t=0 (jogador na frente), o limite de Z é 5.6 (quase debaixo da câmera).
                 // Se t=1 (jogador nos cantos), forçamos o limite de Z para 4.5 (empurra a visão pro meio da sala).
-                float limite_parede_z = glm::mix(1.5f, 7.5f, t);
+                float limite_parede_z = lerp(1.5f, 7.5f, t);
 
                 // Aplica o limite! Como a câmera olha para valores negativos de Z (fundo da sala),
                 // nós não deixamos o alvo da câmera ultrapassar o limite seguro.
@@ -937,7 +937,7 @@ void DrawScene()
                     target_player.z = limite_parede_z;
                 }
 
-                sec_cam_front = glm::normalize(target_player - sec_cam_pos);
+                sec_cam_front = normalized(target_player - sec_cam_pos);
             }
             else if (mov_sec_camera == 2)
             {
@@ -971,17 +971,17 @@ void DrawScene()
                 
                 // Vetor de direção = (Alvo do Bézier) - (Posição da Câmera Física)
                 glm::vec3 bezier_dir = glm::vec3(lookat_target) - sec_cam_pos;
-                sec_cam_front = glm::normalize(bezier_dir);
+                sec_cam_front = normalized(bezier_dir);
             }
         }
         else // CAMERA_SECURITY
         {
             // Se estamos enxergando PELA câmera de segurança, o modelo físico 
             // e a câmera global olham exatamente para a mesma direção.
-            sec_cam_front = glm::normalize(glm::vec3(g_RenderCameraViewVector));
+            sec_cam_front = normalized(glm::vec3(g_RenderCameraViewVector));
         }
         up = glm::vec3(0.0f, 1.0f, 0.0f);
-        rotation_matrix = glm::inverse(glm::lookAt(glm::vec3(0.0f), sec_cam_front, up));
+        rotation_matrix = Matrix_Inverse(Matrix_Camera_View(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f), glm::vec4(sec_cam_front, 0.0f), glm::vec4(up, 0.0f)));
         model = Matrix_Translate(8.0f, 2.8f, 5.8f) * rotation_matrix * Matrix_Rotate_Y(M_PI) * Matrix_Scale(1.0f / 90.0f, 1.0f / 90.0f, 1.0f / 90.0f);
         glUniformMatrix4fv(g_model_uniform, 1, GL_FALSE, glm::value_ptr(model));
         SetObjectId(SEC_CAM);
@@ -1101,7 +1101,10 @@ static const float BOX_BODY_RADIUS    = 0.3f;
 static const float RADIO_BODY_RADIUS  = 0.2f;
 
 // Thunks: permitem ao módulo de portais chamar a renderização definida aqui.
-static void Portal_DrawScene() { DrawScene(); DrawTransparentObjects();}
+// Geometria OPACA vista por um portal. Os transparentes (vidro) são desenhados
+// à parte (pctx.drawTransparent), DEPOIS das molduras, para que o "glass effect"
+// tinja também as superfícies dos portais que estejam atrás do vidro.
+static void Portal_DrawScene() { DrawScene(); }
 static void Portal_DrawPlane() { DrawVirtualObject("the_plane"); }
 
 int main(int argc, char* argv[])
@@ -1333,6 +1336,7 @@ int main(int argc, char* argv[])
     pctx.objectIdUniform   = g_object_id_uniform;
     pctx.portalPassUniform = g_portal_pass_uniform;
     pctx.drawScene         = Portal_DrawScene;
+    pctx.drawTransparent   = DrawTransparentObjects;
     pctx.drawPlane         = Portal_DrawPlane;
     Portal_SetGLContext(pctx);
 
@@ -1671,8 +1675,8 @@ int main(int argc, char* argv[])
                     float dist_x = std::abs(target_player.x - camera_position_c.x);
                     float dist_z = std::abs(target_player.z - camera_position_c.z);
                     float dist = std::max(dist_x, dist_z);
-                    float t = glm::clamp((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
-                    float limite_parede = glm::mix(-1.3f, -2.8f, t);
+                    float t = clampf((dist - 1.0f) / (1.5f - 1.0f), 0.0f, 1.0f);
+                    float limite_parede = lerp(-1.3f, -2.8f, t);
                     
                     if (target_player.x < limite_parede) target_player.x = limite_parede;
                     if (target_player.z < limite_parede) target_player.z = limite_parede;
@@ -1794,9 +1798,9 @@ int main(int argc, char* argv[])
             else {
                 // Posição aproximada do bolo que configuramos no cenário (X: 8.0, Y: -0.2, Z: 8.15)
                 glm::vec3 cakePos = glm::vec3(8.0f, -0.2f, 8.15f);
-                float distToCake = glm::distance(glm::vec3(Pos_Player), cakePos);
-                glm::vec3 dirToCake = glm::normalize(cakePos - glm::vec3(Pos_Player));
-                float dotCake = glm::dot(dirToCake, glm::vec3(camera_view_vector));
+                float distToCake = distancePoints(glm::vec3(Pos_Player), cakePos);
+                glm::vec3 dirToCake = normalized(cakePos - glm::vec3(Pos_Player));
+                float dotCake = dotproduct(dirToCake, glm::vec3(camera_view_vector));
 
                 // CHECA A VITÓRIA (O BOLO) PRIMEIRO
                 if (distToCake < 2.5f && dotCake > 0.85f && !g_GameWon) {
@@ -1812,14 +1816,14 @@ int main(int argc, char* argv[])
                 }
                 // CHECA OS OBJETOS FÍSICOS SE NÃO GANHOU
                 else {
-                    float distToBox = glm::distance(glm::vec3(Pos_Player), g_BoxPosition);
-                    float distToRadio = glm::distance(glm::vec3(Pos_Player), g_RadioPosition);
+                    float distToBox = distancePoints(glm::vec3(Pos_Player), g_BoxPosition);
+                    float distToRadio = distancePoints(glm::vec3(Pos_Player), g_RadioPosition);
                     
-                    glm::vec3 dirToBox = glm::normalize(g_BoxPosition - glm::vec3(Pos_Player));
-                    glm::vec3 dirToRadio = glm::normalize(g_RadioPosition - glm::vec3(Pos_Player));
+                    glm::vec3 dirToBox = normalized(g_BoxPosition - glm::vec3(Pos_Player));
+                    glm::vec3 dirToRadio = normalized(g_RadioPosition - glm::vec3(Pos_Player));
                     
-                    float dotBox = glm::dot(dirToBox, glm::vec3(camera_view_vector));
-                    float dotRadio = glm::dot(dirToRadio, glm::vec3(camera_view_vector));
+                    float dotBox = dotproduct(dirToBox, glm::vec3(camera_view_vector));
+                    float dotRadio = dotproduct(dirToRadio, glm::vec3(camera_view_vector));
                     
                     if (distToBox < 2.0f && dotBox > 0.85f && dotBox > dotRadio) {
                         g_IsHoldingBox = true;
@@ -1870,7 +1874,7 @@ int main(int argc, char* argv[])
             // Se você anda contra a parede, a parede empurra a caixa na direção da câmera.
             // Se a distância entre a origem do raio (jogador) e a caixa ficar menor que 1.0 unidades,
             // o jogador solta a caixa automaticamente para evitar que a câmera entre nela.
-            float distToPlayer = glm::distance(start, finalPos);
+            float distToPlayer = distancePoints(start, finalPos);
             if (distToPlayer < 1.0f) {
                 g_IsHoldingBox = false;
             } */
@@ -1954,7 +1958,7 @@ int main(int argc, char* argv[])
             // Se você anda contra a parede, a parede empurra o rádio na direção da câmera.
             // Se a distância entre a origem do raio (jogador) e o rádio ficar menor que 1.0 unidades,
             // o jogador solta o rádio automaticamente para evitar que a câmera entre nele.
-            /* float distToPlayer = glm::distance(start, finalPos);
+            /* float distToPlayer = distancePoints(start, finalPos);
             if (distToPlayer < 1.0f) {
                 g_IsHoldingRadio = false;
             } */
