@@ -49,6 +49,7 @@
 #include "utils.h"
 #include "matrices.h"
 #include "portal.h"
+#include "collisions.h"
 #include "bezier.h"
 
 
@@ -270,9 +271,9 @@ void LoadShader(const char* filename, GLuint shader_id); // Função utilizada p
 GLuint CreateGpuProgram(GLuint vertex_shader_id, GLuint fragment_shader_id); // Cria um programa de GPU
 void PrintObjModelInfo(ObjModel*); // Função para debugging
 
-// Declaração de funções utilizadas para detecção e resposta a colisões
-struct CollisionAABB; // forward declaration (struct definida acima de main())
-bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box);
+// Declaração de funções utilizadas para detecção e resposta a colisões.
+// As funções geométricas puras e os tipos (CollisionAABB, CollisionLine,
+// PlayerCollider) estão declarados no módulo collisions (collisions.h).
 bool PlayerCollidesAt(const glm::vec3& pos);
 bool BoxCollidesAt(glm::vec3 pos);
 bool RadioCollidesAt(glm::vec3 pos);
@@ -280,7 +281,6 @@ bool IsButtonTriggered();
 bool IsPlayerOnGround();
 void TryMovePlayer(float dx, float dz);
 void TryMovePlayerVertical(float dy);
-CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model);
 void SetupCollisionAABBs();
 void ResetScene();
 
@@ -418,11 +418,7 @@ bool g_IsButtonPressed = false;
 
 // Representação física do jogador para fins de colisão: um cilindro vertical
 // cujos pés ficam em "Pos_Player.y + PLAYER_FEET_Y_OFFSET" (ver abaixo) e cujo
-// topo fica altura unidades acima disso.
-struct PlayerCollider {
-    float raio   = 0.25f;
-    float altura = 1.4f;
-};
+// topo fica altura unidades acima disso. A struct PlayerCollider está em collisions.h.
 PlayerCollider g_PlayerCollider;
 
 // O modelo do jogador é desenhado com um deslocamento vertical de -1.0f em
@@ -444,23 +440,11 @@ float g_PlayerVelocityY = 0.0f; // velocidade vertical atual do jogador
 glm::vec3 g_PlayerPortalVel = glm::vec3(0.0f); // momento horizontal (xz) ao sair de um portal
 bool  g_SpaceWasPressed = false; // estado da tecla espaço no frame anterior (detecção de borda de subida, evita pulo contínuo ao segurar a tecla)
 
-// Caixa delimitadora axis-aligned em coordenadas de mundo, usada nos testes
-// de colisão do cenário (paredes, chão, teto, cubo, botão, porta)
-struct CollisionAABB {
-    glm::vec3 min;
-    glm::vec3 max;
-};
+// AABBs de colisão do cenário (as structs CollisionAABB/CollisionLine estão
+// declaradas em collisions.h): paredes, chão, teto, cubo, botão, porta.
 std::vector<CollisionAABB> g_CollisionAABBs;
 // Hitbox dinâmica para a segunda porta (ativa apenas quando fechada)
 CollisionAABB g_ClosedDoorAABB;
-
-// Representa uma parede diagonal no plano XZ
-struct CollisionLine {
-    glm::vec2 p1;    // Ponto inicial da parede (X, Z)
-    glm::vec2 p2;    // Ponto final da parede (X, Z)
-    float y_min;     // Base da parede (chão)
-    float y_max;     // Topo da parede (teto)
-};
 
 // Vetor global para armazenar as paredes diagonais do cenário
 std::vector<CollisionLine> g_CollisionLines;
@@ -2169,55 +2153,8 @@ int main(int argc, char* argv[])
 // Funções de detecção e resposta a colisões (jogador vs. cenário)
 // ----------------------------------------------------------------------------
 
-// Testa se um cilindro vertical (centrado em pos_xz, com raio fixo e faixa de
-// altura [y_min, y_max]) sobrepõe a CollisionAABB 'box'. O teste é decomposto
-// em (1) overlap do intervalo vertical e (2) distância do centro do círculo
-// (projeção do cilindro no plano XZ) ao retângulo formado pela AABB em XZ.
-bool CylinderIntersectsAABB(glm::vec2 pos_xz, float raio, float y_min, float y_max, const CollisionAABB& box)
-{
-    // Overlap no eixo vertical (Y)
-    if (y_max < box.min.y || y_min > box.max.y)
-        return false;
-
-    // Ponto do retângulo (projeção da AABB em XZ) mais próximo do centro do círculo
-    float closest_x = glm::clamp(pos_xz.x, box.min.x, box.max.x);
-    float closest_z = glm::clamp(pos_xz.y, box.min.z, box.max.z);
-
-    float dx = pos_xz.x - closest_x;
-    float dz = pos_xz.y - closest_z;
-
-    return (dx*dx + dz*dz) < (raio * raio);
-}
-
-bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min_jogador, float y_max_jogador, const CollisionLine& line)
-{
-    // 1. Testa o overlap no eixo vertical (Y)
-    if (y_max_jogador < line.y_min || y_min_jogador > line.y_max)
-        return false;
-
-    // 2. Matemática vetorial no plano XZ
-    glm::vec2 ab = line.p2 - line.p1;       // Vetor da parede
-    glm::vec2 ap = pos_xz - line.p1;        // Vetor do início da parede até o jogador
-
-    // Calcula a projeção escalar de AP sobre AB
-    float proj = glm::dot(ap, ab);
-    float ab_len_sq = glm::dot(ab, ab);     // Comprimento da parede ao quadrado
-    
-    // Calcula 't', que é a porcentagem da projeção ao longo da parede
-    float t = proj / ab_len_sq;
-    
-    // Grampeia 't' entre 0 e 1 para garantir que não estamos checando um ponto além da parede
-    t = glm::clamp(t, 0.0f, 1.0f);
-
-    // Encontra a coordenada exata do ponto mais próximo na parede
-    glm::vec2 closest_point = line.p1 + t * ab;
-    
-    // Calcula a distância do jogador até esse ponto
-    glm::vec2 distance_vec = pos_xz - closest_point;
-    
-    // Se a distância ao quadrado for menor que o raio ao quadrado, é colisão!
-    return glm::dot(distance_vec, distance_vec) < (raio * raio);
-}
+// As funções geométricas puras CylinderIntersectsAABB, CylinderIntersectsLine
+// e ComputeWorldAABB foram movidas para o módulo collisions (collisions.h/.cpp).
 
 // Testa se o cilindro do jogador, na posição candidata 'pos' (mesma referência
 // de Pos_Player — não os pés diretamente, ver PLAYER_FEET_Y_OFFSET), colide
@@ -2490,34 +2427,7 @@ void TryMovePlayer(float dx, float dz)
     }
 }
 
-// Calcula a AABB de mundo de um objeto a partir da sua AABB local (de
-// g_VirtualScene) e da matriz "model" usada para desenhá-lo: transforma os 8
-// cantos da AABB local pela matriz e recomputa o min/max resultante. Válido
-// mesmo quando a matriz inclui rotação e/ou escala.
-CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model)
-{
-    glm::vec3 corners[8] = {
-        glm::vec3(local_min.x, local_min.y, local_min.z),
-        glm::vec3(local_max.x, local_min.y, local_min.z),
-        glm::vec3(local_min.x, local_max.y, local_min.z),
-        glm::vec3(local_max.x, local_max.y, local_min.z),
-        glm::vec3(local_min.x, local_min.y, local_max.z),
-        glm::vec3(local_max.x, local_min.y, local_max.z),
-        glm::vec3(local_min.x, local_max.y, local_max.z),
-        glm::vec3(local_max.x, local_max.y, local_max.z),
-    };
-
-    glm::vec3 world_min( std::numeric_limits<float>::max());
-    glm::vec3 world_max(-std::numeric_limits<float>::max());
-    for (const glm::vec3& corner : corners)
-    {
-        glm::vec3 world_corner = glm::vec3(model * glm::vec4(corner, 1.0f));
-        world_min = glm::min(world_min, world_corner);
-        world_max = glm::max(world_max, world_corner);
-    }
-
-    return CollisionAABB{ world_min, world_max };
-}
+// (ComputeWorldAABB foi movida para o módulo collisions — collisions.h/.cpp.)
 
 // Preenche g_CollisionAABBs com as AABBs de mundo do cenário estático contra
 // o qual o jogador colide: paredes/chão/teto das duas salas (definidas

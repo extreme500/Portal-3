@@ -11,7 +11,7 @@ SOLOUD_SRC := $(wildcard soloud/src/core/*.cpp) \
               $(wildcard soloud/src/audiosource/wav/*.c) \
               $(wildcard soloud/src/backend/miniaudio/*.cpp)
 
-SRC := src/main.cpp src/correcao.cpp src/glad.c src/portal.cpp src/textrendering.cpp \
+SRC := src/main.cpp src/correcao.cpp src/glad.c src/portal.cpp src/collisions.cpp src/textrendering.cpp \
        src/tiny_obj_loader.cpp src/stb_image.cpp $(SOLOUD_SRC)
 
 ./bin/macOS/main: $(SRC) include/*.h
