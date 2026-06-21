@@ -38,6 +38,45 @@ struct PlayerCollider {
     float altura = 1.4f;
 };
 
+// Deslocamento vertical entre Pos_Player (referência) e os pés do cilindro do
+// jogador: Pos_Player.y == 0 corresponde aos pés apoiados no chão (y = -1).
+constexpr float PLAYER_FEET_Y_OFFSET = -1.0f;
+
+// Margem ("skin") que encolhe o intervalo vertical testado em PlayerCollidesAt,
+// evitando que o jogador "grude" ao tocar exatamente o chão/teto.
+constexpr float COLLISION_SKIN = 0.02f;
+
+// ---------------------------------------------------------------------------
+//  Estado ESTÁTICO do cenário, construído uma única vez (ver M3:
+//  BuildCollisionWorld). Agrega tudo contra o que as entidades colidem.
+// ---------------------------------------------------------------------------
+struct CollisionWorld {
+    std::vector<CollisionAABB> aabbs;   // paredes, chão, teto, botão, pilar, bolo...
+    std::vector<CollisionLine> lines;   // paredes diagonais
+    CollisionAABB closedDoor;           // hitbox da porta 2 (ativa quando fechada)
+    PlayerCollider player;              // dimensões do cilindro do jogador
+    // AABBs locais (de g_VirtualScene), cacheadas p/ recomputar a AABB de mundo
+    // precisa da caixa ("Cube") e do rádio ("Shell") a cada frame.
+    glm::vec3 boxLocalMin,   boxLocalMax;
+    glm::vec3 radioLocalMin, radioLocalMax;
+};
+
+// ---------------------------------------------------------------------------
+//  Estado DINÂMICO de um frame: posições/matrizes das entidades móveis e flags
+//  do jogo. Montado pelo chamador (ver CurrentSceneState no main) e passado às
+//  funções de query. As model matrices vêm prontas para que o módulo não
+//  precise de matrices.h (cujas funções não são inline).
+// ---------------------------------------------------------------------------
+struct SceneState {
+    glm::vec3 boxPos;       // posição atual da caixa (centro)
+    glm::vec3 radioPos;     // posição atual do rádio (centro)
+    glm::mat4 boxModel;     // model matrix da caixa  (Translate*Rotate_Y*Scale 1/8)
+    glm::mat4 radioModel;   // model matrix do rádio  (Translate*Rotate_Y*Scale 1/9)
+    bool holdingBox;        // jogador está carregando a caixa?
+    bool holdingRadio;      // jogador está carregando o rádio?
+    bool buttonPressed;     // botão acionado? (libera a porta 2)
+};
+
 // ---------------------------------------------------------------------------
 //  Funções geométricas puras (sem dependência de estado global).
 // ---------------------------------------------------------------------------
@@ -56,5 +95,28 @@ bool CylinderIntersectsLine(glm::vec2 pos_xz, float raio, float y_min_jogador, f
 // matriz e recomputa o min/max resultante. Válido mesmo quando a matriz inclui
 // rotação e/ou escala.
 CollisionAABB ComputeWorldAABB(glm::vec3 local_min, glm::vec3 local_max, const glm::mat4& model);
+
+// ---------------------------------------------------------------------------
+//  Queries de colisão por entidade. Recebem o mundo estático (w), o estado
+//  dinâmico do frame (s) e a posição candidata a testar.
+// ---------------------------------------------------------------------------
+
+// Testa se o cilindro do jogador, na posição candidata 'pos', colide com o
+// cenário, a porta fechada, a caixa ou o rádio.
+bool PlayerCollidesAt(const CollisionWorld& w, const SceneState& s, const glm::vec3& pos);
+
+// Testa se a caixa, na posição candidata 'pos', atravessa o cenário, a porta
+// fechada ou o rádio.
+bool BoxCollidesAt(const CollisionWorld& w, const SceneState& s, glm::vec3 pos);
+
+// Testa se o rádio, na posição candidata 'pos', atravessa o cenário, a porta
+// fechada ou a caixa.
+bool RadioCollidesAt(const CollisionWorld& w, const SceneState& s, glm::vec3 pos);
+
+// Verifica se o jogador (ou a caixa) está sobre o botão que libera a porta 2.
+bool IsButtonTriggered(const SceneState& s, const glm::vec3& playerPos);
+
+// Verifica se há piso imediatamente abaixo dos pés do jogador (permite pular).
+bool IsPlayerOnGround(const CollisionWorld& w, const SceneState& s, const glm::vec3& playerPos);
 
 #endif // _COLLISIONS_H
